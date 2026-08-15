@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "f-insight — FACEIT CS2 Match & Smurf Analytics",
+  "version": "1.1.0",
+  "description": "Deep match lobby insights, smurf risk scoring, party/premade detection, auto ready-up, and map veto helper for FACEIT CS2.",
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://www.faceit.com/*",
+    "https://faceit.com/*",
+    "https://api.faceit.com/*",
+    "https://steamcommunity.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.faceit.com/*",
+        "https://faceit.com/*"
+      ],
+      "exclude_matches": [
+        "https://accounts.faceit.com/*",
+        "https://*.accounts.faceit.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "f-insight Settings & Status",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "icons/*",
+        "f-insight.css"
+      ],
+      "matches": [
+        "https://www.faceit.com/*",
+        "https://faceit.com/*"
+      ]
+    }
+  ]
+}
