@@ -8,7 +8,7 @@ export const TTL = {
   MATCH: 3 * 60 * 1000,        // 3 minutes
   PLAYER_STATS: 15 * 60 * 1000, // 15 minutes
   STEAM_PROFILE: 24 * 60 * 60 * 1000, // 24 hours
-  SETTINGS: Infinity,
+  SETTINGS: Number.MAX_SAFE_INTEGER,
 } as const;
 
 class CacheManager {
@@ -93,6 +93,38 @@ class CacheManager {
         }
       } catch (err) {
         console.warn('[f-insight:Cache] Failed to clear storage', err);
+      }
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    const now = Date.now();
+    for (const [key, entry] of this.memoryCache.entries()) {
+      if (now - entry.cachedAt >= entry.ttlMs) {
+        this.memoryCache.delete(key);
+      }
+    }
+    
+    if (this.isChromeStorageAvailable()) {
+      try {
+        const all = await chrome.storage.local.get(null);
+        const keysToRemove: string[] = [];
+        
+        for (const [key, val] of Object.entries(all)) {
+          if (key === 'settings') continue;
+          const entry = val as CacheEntry<unknown>;
+          if (entry && entry.cachedAt && entry.ttlMs) {
+            if (now - entry.cachedAt >= entry.ttlMs) {
+              keysToRemove.push(key);
+            }
+          }
+        }
+        
+        if (keysToRemove.length > 0) {
+          await chrome.storage.local.remove(keysToRemove);
+        }
+      } catch (err) {
+        console.warn('[f-insight:Cache] Failed to cleanup storage', err);
       }
     }
   }

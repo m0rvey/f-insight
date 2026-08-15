@@ -5,7 +5,7 @@ export interface PlayerElementTarget {
 
 export class DomObserver {
   private observer: MutationObserver | null = null;
-  private rafId: number | null = null;
+  private timeoutId: number | null = null;
   private lastRunTime = 0;
   private readonly THROTTLE_MS = 60; // 60ms throttle for 60fps smoothness
 
@@ -14,20 +14,20 @@ export class DomObserver {
 
     this.observer = new MutationObserver(() => {
       const now = performance.now();
+      
       if (now - this.lastRunTime >= this.THROTTLE_MS) {
-        this.lastRunTime = now;
-        if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.rafId = requestAnimationFrame(() => {
-          onUpdate();
-        });
-      } else {
-        if (!this.rafId) {
-          this.rafId = requestAnimationFrame(() => {
-            this.lastRunTime = performance.now();
-            this.rafId = null;
-            onUpdate();
-          });
+        if (this.timeoutId) {
+          window.clearTimeout(this.timeoutId);
+          this.timeoutId = null;
         }
+        this.lastRunTime = now;
+        requestAnimationFrame(onUpdate);
+      } else if (!this.timeoutId) {
+        this.timeoutId = window.setTimeout(() => {
+          this.lastRunTime = performance.now();
+          this.timeoutId = null;
+          requestAnimationFrame(onUpdate);
+        }, this.THROTTLE_MS - (now - this.lastRunTime));
       }
     });
 
@@ -38,9 +38,9 @@ export class DomObserver {
   }
 
   stopObserving() {
-    if (this.rafId) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
+    if (this.timeoutId) {
+      window.clearTimeout(this.timeoutId);
+      this.timeoutId = null;
     }
     if (this.observer) {
       this.observer.disconnect();
@@ -95,12 +95,16 @@ export class DomObserver {
     ];
 
     const playerNodes = document.querySelectorAll(selectors.join(', '));
+    const processedNodes = new Set<HTMLElement>();
 
-    playerNodes.forEach((el) => {
+    Array.from(playerNodes).forEach((el) => {
       if (!(el instanceof HTMLElement)) return;
 
       const cardEl = el.closest(cardSelectors.join(', ')) || (el.matches(cardSelectors.join(', ')) ? el : null);
       const targetContainer = (cardEl instanceof HTMLElement ? cardEl : el);
+
+      if (processedNodes.has(targetContainer)) return;
+      processedNodes.add(targetContainer);
 
       // Extract nickname from href or inner link
       const href = targetContainer.getAttribute('href') || targetContainer.querySelector('a')?.getAttribute('href') || el.getAttribute('href') || '';

@@ -33,13 +33,22 @@ export class SpaWatcher {
     window.addEventListener('hashchange', () => this.checkUrl());
   }
 
+  private intervalId: number | null = null;
+
   private startPolling() {
     // Light poll as fallback for complex framework routers
-    setInterval(() => {
+    this.intervalId = window.setInterval(() => {
       if (window.location.href !== this.currentUrl) {
         this.checkUrl();
       }
     }, 500);
+  }
+
+  public stop() {
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
   }
 
   private checkUrl() {

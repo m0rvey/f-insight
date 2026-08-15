@@ -185,14 +185,23 @@ class ContentEngine {
       let root = this.playerRoots.get(pId);
 
       if (!host) {
+        if (root) {
+          try {
+            root.unmount();
+          } catch (e) {}
+          this.playerRoots.delete(pId);
+        }
         const shadow = createShadowContainer(hostId);
-        shadow.host.style.cssText = 'all: initial; display: block; width: 100%; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; z-index: 10; margin-top: 6px;';
+        shadow.host.style.cssText = `all: initial; display: ${this.isVisible ? 'block' : 'none'}; width: 100%; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; z-index: 10; margin-top: 6px;`;
         target.element.appendChild(shadow.host);
         root = createRoot(shadow.container);
         this.playerRoots.set(pId, root);
+        host = shadow.host;
+      } else {
+        host.style.display = this.isVisible ? 'block' : 'none';
       }
 
-      if (root) {
+      if (root && this.isVisible) {
         const stats = this.lobbyPayload.playersStats[pId];
         const steam = this.lobbyPayload.steamData[pId];
         const risk = this.lobbyPayload.riskAnalysis[pId];
@@ -224,6 +233,9 @@ class ContentEngine {
 
     if (!this.activePlayerFlyoutId || !this.lobbyPayload) {
       if (host) host.remove();
+      if (this.modalRoot) {
+        this.modalRoot.unmount();
+      }
       this.modalRoot = null;
       return;
     }
@@ -300,6 +312,8 @@ class ContentEngine {
   }
 
   private cleanup() {
+    this.domObserver.stopObserving();
+    this.spaWatcher.stop();
     this.lobbyPayload = null;
     this.activePlayerFlyoutId = null;
 

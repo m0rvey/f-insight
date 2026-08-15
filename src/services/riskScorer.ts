@@ -148,8 +148,8 @@ export function calculateRiskScore(
     }
 
     // Steam Ban History
-    if (steam.bans?.numberOfVACBans || steam.bans?.numberOfGameBans) {
-      const totalBans = (steam.bans.numberOfVACBans || 0) + (steam.bans.numberOfGameBans || 0);
+    if (steam.bans?.vacBanned || steam.bans?.numberOfGameBans) {
+      const totalBans = (steam.bans.vacBanned ? 1 : 0) + (steam.bans.numberOfGameBans || 0);
       const weight = 25;
       score += weight;
       flags.push({

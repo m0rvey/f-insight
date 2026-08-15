@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { LobbyAnalysisPayload } from '../types/messages';
+import { ServerConnectBar } from './lobby/ServerConnectBar';
+import { ProbabilityBar } from './lobby/ProbabilityBar';
+import { TeamCard } from './lobby/TeamCard';
+import { calculateMapVetoRanking } from '../services/forecastEngine';
+import { FaceitPlayerFullStats } from '../types/faceit';
 import {
   ShieldAlert,
   Users,
@@ -7,15 +12,11 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
-  Copy,
-  Check,
-  Play,
   Layers,
   Globe,
   Calendar,
   Sparkles,
   MapPin,
-  Target,
 } from 'lucide-react';
 
 interface LobbySummaryBarProps {
@@ -41,33 +42,30 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
 
-  // Calculate Top Map for each team
-  const calculateTopMap = (roster: any[]) => {
-    const maps = ['mirage', 'inferno', 'nuke', 'ancient', 'anubis', 'dust2', 'vertigo'];
-    let best = { name: 'mirage', wr: 50, matches: 0 };
-    for (const m of maps) {
-      let matches = 0;
-      let wins = 0;
-      for (const r of (roster || [])) {
-        const p = (playersStats && playersStats[r.player_id]) || (playersStats && Object.values(playersStats).find((ps) => ps.nickname?.toLowerCase() === r.nickname?.toLowerCase()));
-        const ms = p?.mapStats?.[m];
-        if (ms) {
-          matches += ms.matches;
-          wins += ms.wins;
-        }
-      }
-      const wr = matches > 0 ? Math.round((wins / matches) * 100) : 50;
-      if (matches >= 2 && wr > best.wr) {
-        best = { name: m, wr, matches };
-      }
+  // Use the forecastEngine map ranker for Top Map
+  const getPlayer = (r: { player_id?: string; nickname?: string }) => {
+    const id = r.player_id || '';
+    if (id && playersStats[id]) return playersStats[id];
+    if (r.nickname) {
+      const found = Object.values(playersStats).find(
+        (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
+      );
+      if (found) return found;
     }
-    return best.matches > 0 ? best : null;
+    return undefined;
   };
 
-  const f1TopMap = calculateTopMap(f1.roster);
-  const f2TopMap = calculateTopMap(f2.roster);
+  const f1Players = (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
+  const f2Players = (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
+  
+  const rankedMaps = calculateMapVetoRanking({ f1Players, f2Players });
+  
+  // Best maps for each team
+  const f1TopMap = [...rankedMaps].sort((a, b) => b.advantageDelta - a.advantageDelta)[0];
+  const f2TopMap = [...rankedMaps].sort((a, b) => a.advantageDelta - b.advantageDelta)[0];
 
-  const [copiedIp, setCopiedIp] = useState(false);
+  const f1TopMapSummary = f1TopMap ? { name: f1TopMap.mapName, wr: f1TopMap.f1WinRate } : null;
+  const f2TopMapSummary = f2TopMap ? { name: f2TopMap.mapName, wr: f2TopMap.f2WinRate } : null;
 
   // Count high risk players
   const highRiskCount = Object.values(riskAnalysis).filter(
@@ -76,13 +74,6 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
   const rawServerIp = match.server_ip;
   const serverIp = rawServerIp && /^[a-zA-Z0-9.\-:]+$/.test(rawServerIp) ? rawServerIp : undefined;
-
-  const handleCopyIp = () => {
-    if (!serverIp) return;
-    navigator.clipboard.writeText(`connect ${serverIp}`);
-    setCopiedIp(true);
-    setTimeout(() => setCopiedIp(false), 2000);
-  };
 
   // Format Status into authentic readable text
   const getStatusDisplay = () => {
@@ -164,7 +155,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     <span>•</span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-zinc-400" />
-                      {new Date(match.configured_at * 1000).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                      {new Date(match.configured_at > 1e12 ? match.configured_at : match.configured_at * 1000).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
                     </span>
                   </>
                 )}
@@ -221,73 +212,18 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
           </div>
         </div>
 
-        {/* Server Connect Bar when configured */}
-        {serverIp && (
-          <div className="mt-3.5 p-3 rounded-xl bg-gradient-to-r from-zinc-900 via-black to-zinc-900 border border-faceit-orange/40 flex items-center justify-between flex-wrap gap-2 shadow-inner">
-            <div className="flex items-center gap-2.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-glow-orange" />
-              <span className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Server Ready:</span>
-              <code className="text-xs font-mono px-2.5 py-1 rounded bg-black/80 border border-zinc-700/80 text-faceit-orange font-bold">
-                connect {serverIp}
-              </code>
-            </div>
+        {serverIp && <ServerConnectBar serverIp={serverIp} />}
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopyIp}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-faceit-orange hover:bg-faceit-orange-hover text-black font-extrabold text-xs transition shadow-glow-orange active:scale-95"
-              >
-                {copiedIp ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedIp ? 'Copied to Clipboard!' : 'Copy Connect'}</span>
-              </button>
-
-              <a
-                href={`steam://connect/${serverIp}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 text-xs font-bold transition active:scale-95"
-              >
-                <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
-                <span>Launch CS2</span>
-              </a>
-            </div>
-          </div>
-        )}
-
-        {/* Content row: Team 1 vs Team 2 Comparison with Projected Elo & Tug-of-War Probability Bar */}
         {isVisible && (
           <div className="mt-4 space-y-3.5">
-            {/* Probability & Predicted Score Line */}
-            <div className="flex items-center justify-between text-xs font-mono font-bold text-zinc-300 px-1">
-              <span className="text-blue-400 font-black">{win1}% {f1.name.slice(0, 10)}</span>
-              {payload.prediction && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/90 border border-white/10 text-zinc-200 text-[11px] shadow-sm">
-                  <Target className="w-3.5 h-3.5 text-faceit-orange" />
-                  <span>Predicted MR12:</span>
-                  <span className="text-white font-extrabold font-mono">
-                    {payload.prediction.predictedScore.f1Score} : {payload.prediction.predictedScore.f2Score}
-                  </span>
-                  {payload.prediction.predictedScore.isOvertimeLikely && (
-                    <span className="text-[10px] text-amber-400 font-sans font-bold">(OT Likely)</span>
-                  )}
-                </div>
-              )}
-              <span className="text-orange-400 font-black">{win2}% {f2.name.slice(0, 10)}</span>
-            </div>
+            <ProbabilityBar 
+              win1={win1} 
+              win2={win2} 
+              team1Name={f1.name} 
+              team2Name={f2.name} 
+              prediction={payload.prediction} 
+            />
 
-            {/* Visual Tug-of-War Probability Bar */}
-            <div className="w-full bg-zinc-950 rounded-full h-2.5 p-0.5 border border-white/10 flex overflow-hidden shadow-inner">
-              <div
-                className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-l-full transition-all duration-500 relative group"
-                style={{ width: `${Math.max(10, Math.min(90, win1))}%` }}
-                title={`${f1.name}: ${win1}% win probability`}
-              />
-              <div
-                className="h-full bg-gradient-to-r from-orange-400 to-faceit-orange rounded-r-full transition-all duration-500 relative group"
-                style={{ width: `${Math.max(10, Math.min(90, win2))}%` }}
-                title={`${f2.name}: ${win2}% win probability`}
-              />
-            </div>
-
-            {/* Tactical Key Factor Summary */}
             {payload.prediction?.keyAdvantageText && (
               <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs text-zinc-300 shadow-sm flex-wrap gap-2">
                 <div className="flex items-center gap-2">
@@ -307,50 +243,19 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-center">
-              {/* Team 1 Card */}
-              <div className="md:col-span-5 bg-[#17171B]/90 hover:bg-[#1B1B20]/95 rounded-xl p-4 border border-white/10 hover:border-blue-500/40 transition-all duration-200 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-2 ring-blue-500/30" />
-                    <span className="font-extrabold text-sm text-zinc-100 truncate max-w-[150px]">{f1.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 font-mono font-extrabold">
-                      +{teamSummary.faction1.projectedElo?.winGain || 25} / -{teamSummary.faction1.projectedElo?.lossLoss || 25} ELO
-                    </span>
-                    <span className="text-xs font-black text-blue-400 font-mono">
-                      {win1}% Win
-                    </span>
-                  </div>
-                </div>
+              <TeamCard
+                factionId={1}
+                teamName={f1.name}
+                winChance={win1}
+                projectedWin={teamSummary.faction1.projectedElo?.winGain || 25}
+                projectedLoss={teamSummary.faction1.projectedElo?.lossLoss || 25}
+                avgElo={teamSummary.faction1.avgElo}
+                avgKd={teamSummary.faction1.avgKd}
+                avgAdr={teamSummary.faction1.avgAdr}
+                avgHsPercent={teamSummary.faction1.avgHsPercent}
+                topMap={f1TopMapSummary}
+              />
 
-                <div className="grid grid-cols-5 gap-2 text-center font-mono">
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg Elo</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction1.avgElo}</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg K/D</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction1.avgKd}</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg ADR</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction1.avgAdr}</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg HS%</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction1.avgHsPercent}%</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
-                    <div className="text-xs font-bold text-blue-400 mt-0.5 capitalize truncate">
-                      {f1TopMap ? `${f1TopMap.name} (${f1TopMap.wr}%)` : 'Mirage'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* VS Divider & Delta */}
               <div className="md:col-span-1 flex flex-col items-center justify-center text-center">
                 <div className="text-xs font-black text-zinc-500 uppercase tracking-widest px-2 py-0.5 rounded bg-black/60 border border-white/5">
                   VS
@@ -360,48 +265,18 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                 </div>
               </div>
 
-              {/* Team 2 Card */}
-              <div className="md:col-span-5 bg-[#17171B]/90 hover:bg-[#1B1B20]/95 rounded-xl p-4 border border-white/10 hover:border-faceit-orange/40 transition-all duration-200 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-orange-400 font-mono">
-                      {win2}% Win
-                    </span>
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300 font-mono font-extrabold">
-                      +{teamSummary.faction2.projectedElo?.winGain || 25} / -{teamSummary.faction2.projectedElo?.lossLoss || 25} ELO
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-extrabold text-sm text-zinc-100 truncate max-w-[150px]">{f2.name}</span>
-                    <div className="w-3.5 h-3.5 rounded-full bg-faceit-orange ring-2 ring-faceit-orange/30" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-5 gap-2 text-center font-mono">
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg Elo</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction2.avgElo}</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg K/D</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction2.avgKd}</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg ADR</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction2.avgAdr}</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg HS%</div>
-                    <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction2.avgHsPercent}%</div>
-                  </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
-                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
-                    <div className="text-xs font-bold text-orange-400 mt-0.5 capitalize truncate">
-                      {f2TopMap ? `${f2TopMap.name} (${f2TopMap.wr}%)` : 'Mirage'}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <TeamCard
+                factionId={2}
+                teamName={f2.name}
+                winChance={win2}
+                projectedWin={teamSummary.faction2.projectedElo?.winGain || 25}
+                projectedLoss={teamSummary.faction2.projectedElo?.lossLoss || 25}
+                avgElo={teamSummary.faction2.avgElo}
+                avgKd={teamSummary.faction2.avgKd}
+                avgAdr={teamSummary.faction2.avgAdr}
+                avgHsPercent={teamSummary.faction2.avgHsPercent}
+                topMap={f2TopMapSummary}
+              />
             </div>
           </div>
         )}
@@ -409,3 +284,4 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
     </div>
   );
 };
+

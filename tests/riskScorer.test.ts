@@ -16,9 +16,13 @@ describe('calculateRiskScore', () => {
       overallWinRate: 51,
       overallKd: 1.05,
       overallHsPercent: 45,
+      overallAdr: 75,
       currentStreak: { type: 'W', count: 1 },
       recentMatches: [],
       mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.05,
+      recentAdr: 75,
     };
 
     const steam: SteamFullData = {
@@ -65,9 +69,13 @@ describe('calculateRiskScore', () => {
       overallWinRate: 78,
       overallKd: 2.1,
       overallHsPercent: 62,
+      overallAdr: 120,
       currentStreak: { type: 'W', count: 7 },
       recentMatches: [],
       mapStats: {},
+      formStatus: 'HOT',
+      recentKd: 2.5,
+      recentAdr: 130,
     };
 
     const steam: SteamFullData = {
@@ -116,9 +124,13 @@ describe('calculateRiskScore', () => {
       overallWinRate: 52,
       overallKd: 1.1,
       overallHsPercent: 48,
+      overallAdr: 80,
       currentStreak: { type: 'NONE', count: 0 },
       recentMatches: [],
       mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.1,
+      recentAdr: 80,
     };
 
     const steam: SteamFullData = {

@@ -16,6 +16,7 @@ import {
   Copy,
   UserCheck,
 } from 'lucide-react';
+import { SettingToggle } from '../components/popup/SettingToggle';
 
 export const PopupApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'automation' | 'modules' | 'cache'>('status');
@@ -234,174 +235,110 @@ export const PopupApp: React.FC = () => {
         {/* TAB 2: AUTOMATION & QOL */}
         {activeTab === 'automation' && (
           <div className="space-y-2.5">
-            <div className="p-3 rounded-xl bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Play className="w-4 h-4 text-emerald-400" />
-                <div>
-                  <div className="text-xs font-bold text-zinc-100">Auto Ready-Up</div>
-                  <div className="text-[11px] text-faceit-muted">Automatically clicks Accept when match pops</div>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.autoReadyUp}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, autoReadyUp: val });
-                  handleSaveSettings({ autoReadyUp: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-3 rounded-xl bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <UserCheck className="w-4 h-4 text-blue-400" />
-                <div>
-                  <div className="text-xs font-bold text-zinc-100">Auto Accept Party Invites</div>
-                  <div className="text-[11px] text-faceit-muted">Accepts lobby invitations from friends</div>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.autoAcceptParty}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, autoAcceptParty: val });
-                  handleSaveSettings({ autoAcceptParty: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-3 rounded-xl bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Copy className="w-4 h-4 text-amber-400" />
-                <div>
-                  <div className="text-xs font-bold text-zinc-100">Auto-Copy Server IP</div>
-                  <div className="text-[11px] text-faceit-muted">Copies connect IP to clipboard on server ready</div>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.autoCopyConnectIp}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, autoCopyConnectIp: val });
-                  handleSaveSettings({ autoCopyConnectIp: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-3 rounded-xl bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Volume2 className="w-4 h-4 text-purple-400" />
-                <div>
-                  <div className="text-xs font-bold text-zinc-100">Server Ready Sound Alert</div>
-                  <div className="text-[11px] text-faceit-muted">Plays pleasant chime when server is ready</div>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.playReadySound}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, playReadySound: val });
-                  handleSaveSettings({ playReadySound: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
+            <SettingToggle
+              title="Auto Ready-Up"
+              description="Automatically clicks Accept when match pops"
+              icon={Play}
+              iconColorClass="text-emerald-400"
+              checked={settings.autoReadyUp}
+              onChange={(val) => {
+                setSettings({ ...settings, autoReadyUp: val });
+                handleSaveSettings({ autoReadyUp: val });
+              }}
+            />
+            <SettingToggle
+              title="Auto Accept Party Invites"
+              description="Accepts lobby invitations from friends"
+              icon={UserCheck}
+              iconColorClass="text-blue-400"
+              checked={settings.autoAcceptParty}
+              onChange={(val) => {
+                setSettings({ ...settings, autoAcceptParty: val });
+                handleSaveSettings({ autoAcceptParty: val });
+              }}
+            />
+            <SettingToggle
+              title="Auto-Copy Server IP"
+              description="Copies connect IP to clipboard on server ready"
+              icon={Copy}
+              iconColorClass="text-amber-400"
+              checked={settings.autoCopyConnectIp}
+              onChange={(val) => {
+                setSettings({ ...settings, autoCopyConnectIp: val });
+                handleSaveSettings({ autoCopyConnectIp: val });
+              }}
+            />
+            <SettingToggle
+              title="Server Ready Sound Alert"
+              description="Plays pleasant chime when server is ready"
+              icon={Volume2}
+              iconColorClass="text-purple-400"
+              checked={settings.playReadySound}
+              onChange={(val) => {
+                setSettings({ ...settings, playReadySound: val });
+                handleSaveSettings({ playReadySound: val });
+              }}
+            />
           </div>
         )}
 
         {/* TAB 3: MODULES & TOGGLES */}
         {activeTab === 'modules' && (
           <div className="space-y-2">
-            <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-200">Smurf & Risk Detector</span>
-              <input
-                type="checkbox"
-                checked={settings.enableRedFlags}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, enableRedFlags: val });
-                  handleSaveSettings({ enableRedFlags: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-200">Veto & Map Pool Matrix</span>
-              <input
-                type="checkbox"
-                checked={settings.enableVetoHelper}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, enableVetoHelper: val });
-                  handleSaveSettings({ enableVetoHelper: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-200">Premade & Party Detection</span>
-              <input
-                type="checkbox"
-                checked={settings.enablePremadeDetection}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, enablePremadeDetection: val });
-                  handleSaveSettings({ enablePremadeDetection: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-200">Firepower Contribution (FCR %)</span>
-              <input
-                type="checkbox"
-                checked={settings.showFcrRating}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, showFcrRating: val });
-                  handleSaveSettings({ showFcrRating: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-200">Player Form & Momentum (Hot/Cold)</span>
-              <input
-                type="checkbox"
-                checked={settings.showFormIndicators}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, showFormIndicators: val });
-                  handleSaveSettings({ showFormIndicators: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-200">Floating Action Button HUD</span>
-              <input
-                type="checkbox"
-                checked={settings.enableFloatingControls}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setSettings({ ...settings, enableFloatingControls: val });
-                  handleSaveSettings({ enableFloatingControls: val });
-                }}
-                className="w-4 h-4 accent-faceit-orange cursor-pointer"
-              />
-            </div>
+            <SettingToggle
+              title="Smurf & Risk Detector"
+              variant="simple"
+              checked={settings.enableRedFlags}
+              onChange={(val) => {
+                setSettings({ ...settings, enableRedFlags: val });
+                handleSaveSettings({ enableRedFlags: val });
+              }}
+            />
+            <SettingToggle
+              title="Veto & Map Pool Matrix"
+              variant="simple"
+              checked={settings.enableVetoHelper}
+              onChange={(val) => {
+                setSettings({ ...settings, enableVetoHelper: val });
+                handleSaveSettings({ enableVetoHelper: val });
+              }}
+            />
+            <SettingToggle
+              title="Premade & Party Detection"
+              variant="simple"
+              checked={settings.enablePremadeDetection}
+              onChange={(val) => {
+                setSettings({ ...settings, enablePremadeDetection: val });
+                handleSaveSettings({ enablePremadeDetection: val });
+              }}
+            />
+            <SettingToggle
+              title="Firepower Contribution (FCR %)"
+              variant="simple"
+              checked={settings.showFcrRating}
+              onChange={(val) => {
+                setSettings({ ...settings, showFcrRating: val });
+                handleSaveSettings({ showFcrRating: val });
+              }}
+            />
+            <SettingToggle
+              title="Player Form & Momentum (Hot/Cold)"
+              variant="simple"
+              checked={settings.showFormIndicators}
+              onChange={(val) => {
+                setSettings({ ...settings, showFormIndicators: val });
+                handleSaveSettings({ showFormIndicators: val });
+              }}
+            />
+            <SettingToggle
+              title="Floating Action Button HUD"
+              variant="simple"
+              checked={settings.enableFloatingControls}
+              onChange={(val) => {
+                setSettings({ ...settings, enableFloatingControls: val });
+                handleSaveSettings({ enableFloatingControls: val });
+              }}
+            />
           </div>
         )}
 

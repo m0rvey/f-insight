@@ -29,8 +29,9 @@ export class AutoActionsEngine {
     if (this.hasReadiedCurrentMatch) return;
 
     // Search for match ready / check-in modal buttons in FACEIT DOM
-    const buttons = document.querySelectorAll('button');
+    const buttons = document.querySelectorAll('[class*="MatchReady"] button, [class*="check-in"] button, [data-testid*="ready"] button');
     for (const btn of buttons) {
+      if (!(btn instanceof HTMLButtonElement)) continue;
       const text = btn.textContent?.trim().toUpperCase() || '';
       const isReadyBtn =
         text === 'CHECK IN' ||
@@ -78,12 +79,14 @@ export class AutoActionsEngine {
     if (settings.autoCopyConnectIp && !this.hasCopiedServerIp) {
       this.hasCopiedServerIp = true;
       const connectCmd = `connect ${serverIp}`;
-      try {
-        navigator.clipboard.writeText(connectCmd).then(() => {
-          console.log(`[f-insight:AutoAction] Copied "${connectCmd}" to clipboard`);
-        });
-      } catch (err) {
-        console.warn('[f-insight:AutoAction] Clipboard write failed:', err);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(connectCmd)
+            .then(() => {
+              console.log(`[f-insight:AutoAction] Copied "${connectCmd}" to clipboard`);
+            })
+            .catch((err) => {
+              console.warn('[f-insight:AutoAction] Clipboard write failed:', err);
+            });
       }
     }
   }

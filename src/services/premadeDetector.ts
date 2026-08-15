@@ -61,35 +61,42 @@ export function detectPremades(
       }
     }
 
-    // Find connected components where players share >= 3 recent matches
+    // Find connected components where players share >= 2 recent matches
     const visited = new Set<string>();
+    
+    const areConnected = (p1: string, p2: string) => {
+      const matches1 = playerMatchSets.get(p1);
+      const matches2 = playerMatchSets.get(p2);
+      if (!matches1 || !matches2) return false;
+      let overlap = 0;
+      for (const mId of matches1) {
+        if (matches2.has(mId)) overlap++;
+        if (overlap >= 2) return true;
+      }
+      return false;
+    };
+
     for (const p1 of remainingPlayers) {
       if (visited.has(p1)) continue;
-      const cluster = [p1];
-      const matches1 = playerMatchSets.get(p1);
-      if (!matches1 || matches1.size === 0) continue;
-
-      for (const p2 of remainingPlayers) {
-        if (p1 === p2 || visited.has(p2)) continue;
-        const matches2 = playerMatchSets.get(p2);
-        if (!matches2 || matches2.size === 0) continue;
-
-        // Calculate overlap
-        let overlap = 0;
-        for (const mId of matches1) {
-          if (matches2.has(mId)) overlap++;
-        }
-
-        if (overlap >= 2) {
-          cluster.push(p2);
+      
+      const cluster: string[] = [];
+      const queue = [p1];
+      visited.add(p1);
+      
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        cluster.push(current);
+        
+        for (const p2 of remainingPlayers) {
+          if (!visited.has(p2) && areConnected(current, p2)) {
+            visited.add(p2);
+            queue.push(p2);
+          }
         }
       }
 
       if (cluster.length >= 2) {
-        cluster.forEach((id) => {
-          visited.add(id);
-          identifiedPartyPlayers.add(id);
-        });
+        cluster.forEach((id) => identifiedPartyPlayers.add(id));
         const letter = String.fromCharCode(65 + (groupIndex % 26));
         groups.push({
           id: `party-${groupIndex}`,

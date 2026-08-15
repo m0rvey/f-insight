@@ -1,4 +1,5 @@
 import { BackgroundMessageHandler } from './messageHandler';
+import { cacheManager } from '../services/cacheManager';
 
 const handler = new BackgroundMessageHandler();
 
@@ -13,7 +14,7 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handler.handleMessage(message, sender).then(sendResponse);
+  handler.init().then(() => handler.handleMessage(message, sender)).then(sendResponse);
   return true; // Keep channel open for async response
 });
 
@@ -22,5 +23,6 @@ chrome.alarms.create('cache_cleanup', { periodInMinutes: 30 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'cache_cleanup') {
     console.log('[f-insight:Background] Running scheduled cache cleanup...');
+    await cacheManager.cleanup();
   }
 });

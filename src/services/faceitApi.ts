@@ -6,6 +6,80 @@ import {
 } from '../types/faceit';
 import { evaluatePlayerForm } from './forecastEngine';
 
+const LOCATION_NAME_MAP: Record<string, string> = {
+  // Russian & CIS Server Locations
+  moscow: 'Russia (Moscow)',
+  russia: 'Russia (Moscow)',
+  mow: 'Russia (Moscow)',
+  spb: 'Russia (Saint Petersburg)',
+  saint_petersburg: 'Russia (Saint Petersburg)',
+  petersburg: 'Russia (Saint Petersburg)',
+  led: 'Russia (Saint Petersburg)',
+  ekaterinburg: 'Russia (Yekaterinburg)',
+  yekaterinburg: 'Russia (Yekaterinburg)',
+  svx: 'Russia (Yekaterinburg)',
+  novosibirsk: 'Russia (Novosibirsk)',
+  ovb: 'Russia (Novosibirsk)',
+  khabarovsk: 'Russia (Khabarovsk)',
+  khv: 'Russia (Khabarovsk)',
+  vladivostok: 'Russia (Vladivostok)',
+  vvo: 'Russia (Vladivostok)',
+  kazakhstan: 'Kazakhstan (Almaty)',
+  almaty: 'Kazakhstan (Almaty)',
+  ala: 'Kazakhstan (Almaty)',
+  astana: 'Kazakhstan (Astana)',
+  tse: 'Kazakhstan (Astana)',
+  minsk: 'Belarus (Minsk)',
+  belarus: 'Belarus (Minsk)',
+  msq: 'Belarus (Minsk)',
+  kyiv: 'Ukraine (Kyiv)',
+  kiev: 'Ukraine (Kyiv)',
+  ukraine: 'Ukraine (Kyiv)',
+  iev: 'Ukraine (Kyiv)',
+  // European Server Locations
+  germany: 'Germany (Frankfurt)',
+  frankfurt: 'Germany (Frankfurt)',
+  finland: 'Finland (Helsinki)',
+  helsinki: 'Finland (Helsinki)',
+  sweden: 'Sweden (Stockholm)',
+  stockholm: 'Sweden (Stockholm)',
+  netherlands: 'Netherlands (Amsterdam)',
+  amsterdam: 'Netherlands (Amsterdam)',
+  uk: 'United Kingdom (London)',
+  london: 'United Kingdom (London)',
+  france: 'France (Paris)',
+  paris: 'France (Paris)',
+  poland: 'Poland (Warsaw)',
+  warsaw: 'Poland (Warsaw)',
+  turkey: 'Turkey (Istanbul)',
+  istanbul: 'Turkey (Istanbul)',
+  // Americas & APAC
+  dallas: 'US (Dallas)',
+  chicago: 'US (Chicago)',
+  denver: 'US (Denver)',
+  singapore: 'Singapore',
+  brazil: 'Brazil (São Paulo)',
+  sao_paulo: 'Brazil (São Paulo)',
+};
+
+interface RawPlayerPayload {
+  nickname?: string;
+  avatar?: string;
+  country?: string;
+  steam_id_64?: string;
+  created_at?: string;
+  games?: {
+    cs2?: { faceit_elo?: number; skill_level?: number; game_player_id?: string };
+    csgo?: { faceit_elo?: number; skill_level?: number; game_player_id?: string };
+  };
+}
+
+interface RawStatsPayload {
+  lifetime?: Record<string, string>;
+  segments?: any[];
+  items?: any[];
+}
+
 export class FaceitApiService {
   async getMatchDetails(matchId: string): Promise<FaceitMatchDetails | null> {
     try {
@@ -57,7 +131,8 @@ export class FaceitApiService {
       let history: any[] = [];
       if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
         const hJson = await historyRes.value.json();
-        history = (hJson.payload || hJson) || [];
+        const rawPayload = hJson.payload || hJson;
+        history = Array.isArray(rawPayload) ? rawPayload : (rawPayload?.items || rawPayload?.segments || []);
       }
 
       return this.parsePlayerPayload(playerId, fallbackNickname, user, stats, csgoStats, history);
@@ -82,64 +157,8 @@ export class FaceitApiService {
       p.location ||
       '';
 
-    const locationNameMap: Record<string, string> = {
-      // Russian & CIS Server Locations
-      moscow: 'Russia (Moscow)',
-      russia: 'Russia (Moscow)',
-      mow: 'Russia (Moscow)',
-      spb: 'Russia (Saint Petersburg)',
-      saint_petersburg: 'Russia (Saint Petersburg)',
-      petersburg: 'Russia (Saint Petersburg)',
-      led: 'Russia (Saint Petersburg)',
-      ekaterinburg: 'Russia (Yekaterinburg)',
-      yekaterinburg: 'Russia (Yekaterinburg)',
-      svx: 'Russia (Yekaterinburg)',
-      novosibirsk: 'Russia (Novosibirsk)',
-      ovb: 'Russia (Novosibirsk)',
-      khabarovsk: 'Russia (Khabarovsk)',
-      khv: 'Russia (Khabarovsk)',
-      vladivostok: 'Russia (Vladivostok)',
-      vvo: 'Russia (Vladivostok)',
-      kazakhstan: 'Kazakhstan (Almaty)',
-      almaty: 'Kazakhstan (Almaty)',
-      ala: 'Kazakhstan (Almaty)',
-      astana: 'Kazakhstan (Astana)',
-      tse: 'Kazakhstan (Astana)',
-      minsk: 'Belarus (Minsk)',
-      belarus: 'Belarus (Minsk)',
-      msq: 'Belarus (Minsk)',
-      kyiv: 'Ukraine (Kyiv)',
-      kiev: 'Ukraine (Kyiv)',
-      ukraine: 'Ukraine (Kyiv)',
-      iev: 'Ukraine (Kyiv)',
-      // European Server Locations
-      germany: 'Germany (Frankfurt)',
-      frankfurt: 'Germany (Frankfurt)',
-      finland: 'Finland (Helsinki)',
-      helsinki: 'Finland (Helsinki)',
-      sweden: 'Sweden (Stockholm)',
-      stockholm: 'Sweden (Stockholm)',
-      netherlands: 'Netherlands (Amsterdam)',
-      amsterdam: 'Netherlands (Amsterdam)',
-      uk: 'United Kingdom (London)',
-      london: 'United Kingdom (London)',
-      france: 'France (Paris)',
-      paris: 'France (Paris)',
-      poland: 'Poland (Warsaw)',
-      warsaw: 'Poland (Warsaw)',
-      turkey: 'Turkey (Istanbul)',
-      istanbul: 'Turkey (Istanbul)',
-      // Americas & APAC
-      dallas: 'US (Dallas)',
-      chicago: 'US (Chicago)',
-      denver: 'US (Denver)',
-      singapore: 'Singapore',
-      brazil: 'Brazil (São Paulo)',
-      sao_paulo: 'Brazil (São Paulo)',
-    };
-
     const formattedLocation = locationRaw
-      ? locationNameMap[locationRaw.toLowerCase()] || locationRaw
+      ? LOCATION_NAME_MAP[locationRaw.toLowerCase()] || locationRaw
       : undefined;
 
     // Only treat as server_ip if it is a real IP:port or hostname:port
@@ -193,9 +212,9 @@ export class FaceitApiService {
   private parsePlayerPayload(
     playerId: string,
     fallbackNickname: string | undefined,
-    user: any,
-    stats: any,
-    csgoStats: any,
+    user: RawPlayerPayload | null,
+    stats: RawStatsPayload | any[] | null,
+    csgoStats: RawStatsPayload | any[] | null,
     history: any[]
   ): FaceitPlayerFullStats {
     const cs2Game = user?.games?.cs2 || user?.games?.csgo || {};
@@ -207,7 +226,9 @@ export class FaceitApiService {
     const country = user?.country || '';
 
     // Lifetime Stats
-    const lifetime = stats?.lifetime || csgoStats?.lifetime || {};
+    const statsObj = Array.isArray(stats) ? null : stats;
+    const csgoStatsObj = Array.isArray(csgoStats) ? null : csgoStats;
+    const lifetime = statsObj?.lifetime || csgoStatsObj?.lifetime || {};
     const totalMatches = parseInt(lifetime.m1 || lifetime.Matches || '0', 10);
     const overallWinRate = parseFloat(lifetime.k6 || lifetime['Win Rate %'] || '0');
     const overallKd = parseFloat(lifetime.k5 || lifetime['Average K/D Ratio'] || '1.0');

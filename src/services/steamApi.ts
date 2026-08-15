@@ -22,6 +22,30 @@ export class SteamApiService {
           avatar: avatarMatch ? avatarMatch[1] : '',
           communityVisibilityState: isPrivate ? 1 : 3,
         };
+        
+        let cs2HoursTotal = 0;
+        let cs2HoursLast2Weeks = 0;
+        // Search for CS:GO / CS2 in mostPlayedGames
+        if (xmlText.includes('<gameName><![CDATA[Counter-Strike 2]]></gameName>') || xmlText.includes('<gameName><![CDATA[Counter-Strike: Global Offensive]]></gameName>')) {
+           const match = xmlText.match(/<gameName><!\[CDATA\[Counter-Strike.*?\]\]><\/gameName>\s*<gameLink>.*?<\/gameLink>\s*<gameIcon>.*?<\/gameIcon>\s*<gameLogo>.*?<\/gameLogo>\s*<gameLogoSmall>.*?<\/gameLogoSmall>\s*<hoursPlayed>(.*?)<\/hoursPlayed>/);
+           if (match) {
+             cs2HoursTotal = parseFloat(match[1].replace(',', ''));
+           }
+        }
+        
+        const memberSinceMatch = xmlText.match(/<memberSince>(.*?)<\/memberSince>/);
+        if (memberSinceMatch) {
+            const memberDate = new Date(memberSinceMatch[1]);
+            if (!isNaN(memberDate.getTime())) {
+                const diffMs = Date.now() - memberDate.getTime();
+                summary.accountAgeYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+            }
+        }
+
+        const playtime = {
+          cs2HoursTotal,
+          cs2HoursLast2Weeks
+        };
 
         const bans: SteamBanStatus = {
           steamId64,
@@ -35,6 +59,7 @@ export class SteamApiService {
 
         return {
           summary,
+          playtime,
           bans,
           isPrivate,
           fetchedAt: Date.now(),

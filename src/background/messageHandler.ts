@@ -39,232 +39,18 @@ export class BackgroundMessageHandler {
   ): Promise<MessageResponse> {
     try {
       switch (message.type) {
-        case 'GET_SETTINGS': {
-          const settings = await this.loadSettings();
-          return { success: true, data: settings };
-        }
-
-        case 'SAVE_SETTINGS': {
-          this.settings = { ...this.settings, ...message.payload };
-          await cacheManager.set('settings', this.settings, TTL.SETTINGS);
-          return { success: true, data: this.settings };
-        }
-
-        case 'FETCH_LOBBY_INSIGHT': {
-          const { matchId, forceRefresh } = message.payload;
-          const cacheKey = `match_analysis:${matchId}`;
-
-          if (!forceRefresh) {
-            const cachedPayload = await cacheManager.get<LobbyAnalysisPayload>(cacheKey);
-            if (cachedPayload) {
-              return { success: true, data: cachedPayload };
-            }
-          }
-
-          const match = await faceitApi.getMatchDetails(matchId);
-          if (!match) {
-            return { success: false, error: `Could not fetch match details for ${matchId}` };
-          }
-
-          const f1Roster = match.teams?.faction1?.roster || [];
-          const f2Roster = match.teams?.faction2?.roster || [];
-          const allPlayers = [...f1Roster, ...f2Roster];
-
-          const playersStats: Record<string, FaceitPlayerFullStats> = {};
-          const steamData: Record<string, SteamFullData> = {};
-          const riskAnalysis: Record<string, RiskAnalysisResult> = {};
-
-          // Fetch all players concurrently with cache
-          await Promise.all(
-            allPlayers.map(async (player) => {
-              const pId = player.player_id;
-              if (!pId) return;
-
-              // 1. Player Stats
-              const pCacheKey = `player_stats:${pId}`;
-              let pStats: FaceitPlayerFullStats | null = null;
-
-              if (!forceRefresh) {
-                pStats = await cacheManager.get<FaceitPlayerFullStats>(pCacheKey);
-              }
-
-              if (!pStats) {
-                pStats = await faceitApi.getPlayerStats(pId, player.nickname);
-                if (pStats) {
-                  await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
-                }
-              }
-
-              if (pStats) {
-                playersStats[pId] = pStats;
-
-                // 2. Steam Data
-                const steamId = pStats.steamId64 || player.game_player_id;
-                if (steamId) {
-                  const sCacheKey = `steam_data:${steamId}`;
-                  let sData: SteamFullData | null = null;
-
-                  if (!forceRefresh) {
-                    sData = await cacheManager.get<SteamFullData>(sCacheKey);
-                  }
-
-                  if (!sData) {
-                    sData = await steamApi.getPlayerFullData(steamId);
-                    await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
-                  }
-
-                  if (sData) {
-                    steamData[pId] = sData;
-                  }
-                }
-
-                // 3. Red Flags Risk Score
-                riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
-              }
-            })
-          );
-
-          // Calculate Team Elo and Probabilities
-          const f1Elos = f1Roster.map((p) => playersStats[p.player_id]?.elo || p.elo || 1000);
-          const f2Elos = f2Roster.map((p) => playersStats[p.player_id]?.elo || p.elo || 1000);
-
-          const f1TotalElo = f1Elos.reduce((a, b) => a + b, 0);
-          const f2TotalElo = f2Elos.reduce((a, b) => a + b, 0);
-          const f1AvgElo = f1Elos.length > 0 ? Math.round(f1TotalElo / f1Elos.length) : 1000;
-          const f2AvgElo = f2Elos.length > 0 ? Math.round(f2TotalElo / f2Elos.length) : 1000;
-
-          const eloDiff = f1AvgElo - f2AvgElo;
-
-          // Projected Elo (+/-)
-          const projectedEloStakes = calculateProjectedElo(f1AvgElo, f2AvgElo);
-
-          const f1Kds = f1Roster.map((p) => playersStats[p.player_id]?.overallKd || 1.0);
-          const f2Kds = f2Roster.map((p) => playersStats[p.player_id]?.overallKd || 1.0);
-          const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a, b) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
-          const f2AvgKd = f2Kds.length > 0 ? parseFloat((f2Kds.reduce((a, b) => a + b, 0) / f2Kds.length).toFixed(2)) : 1.0;
-
-          const f1Hs = f1Roster.map((p) => playersStats[p.player_id]?.overallHsPercent || 0);
-          const f2Hs = f2Roster.map((p) => playersStats[p.player_id]?.overallHsPercent || 0);
-          const f1AvgHs = f1Hs.length > 0 ? Math.round(f1Hs.reduce((a, b) => a + b, 0) / f1Hs.length) : 0;
-          const f2AvgHs = f2Hs.length > 0 ? Math.round(f2Hs.reduce((a, b) => a + b, 0) / f2Hs.length) : 0;
-
-          const f1Adrs = f1Roster.map((p) => playersStats[p.player_id]?.overallAdr || 75);
-          const f2Adrs = f2Roster.map((p) => playersStats[p.player_id]?.overallAdr || 75);
-          const f1AvgAdr = f1Adrs.length > 0 ? Math.round(f1Adrs.reduce((a, b) => a + b, 0) / f1Adrs.length) : 75;
-          const f2AvgAdr = f2Adrs.length > 0 ? Math.round(f2Adrs.reduce((a, b) => a + b, 0) / f2Adrs.length) : 75;
-
-          // Calculate FCR team contribution share
-          const f1FullPlayers = f1Roster.map((r) => playersStats[r.player_id]).filter(Boolean);
-          const f2FullPlayers = f2Roster.map((r) => playersStats[r.player_id]).filter(Boolean);
-
-          const f1FcrMap = calculateTeamFcr(f1FullPlayers);
-          const f2FcrMap = calculateTeamFcr(f2FullPlayers);
-
-          for (const [id, fcr] of Object.entries(f1FcrMap)) {
-            if (playersStats[id]) playersStats[id].fcrContributionPercent = fcr;
-          }
-          for (const [id, fcr] of Object.entries(f2FcrMap)) {
-            if (playersStats[id]) playersStats[id].fcrContributionPercent = fcr;
-          }
-
-          // Premade Detection
-          const premadeGroups = detectPremades(match, playersStats);
-
-          // Advanced Multi-Factor Match Prediction (Elo + Map + Form + Premades + Smurfs)
-          const prediction = calculateAdvancedMatchPrediction({
-            f1AvgElo,
-            f2AvgElo,
-            f1Players: f1FullPlayers,
-            f2Players: f2FullPlayers,
-            selectedMap: match.selected_map,
-            premadeGroups,
-            riskAnalysis,
-            f1Fcr: f1FcrMap,
-            f2Fcr: f2FcrMap,
-          });
-
-          const payload: LobbyAnalysisPayload = {
-            match,
-            playersStats,
-            steamData,
-            riskAnalysis,
-            premadeGroups,
-            teamSummary: {
-              faction1: {
-                totalElo: f1TotalElo,
-                avgElo: f1AvgElo,
-                winChancePercent: prediction.winChanceF1,
-                avgKd: f1AvgKd,
-                avgHsPercent: f1AvgHs,
-                avgAdr: f1AvgAdr,
-                projectedElo: projectedEloStakes.faction1,
-              },
-              faction2: {
-                totalElo: f2TotalElo,
-                avgElo: f2AvgElo,
-                winChancePercent: prediction.winChanceF2,
-                avgKd: f2AvgKd,
-                avgHsPercent: f2AvgHs,
-                avgAdr: f2AvgAdr,
-                projectedElo: projectedEloStakes.faction2,
-              },
-              eloDifference: Math.abs(eloDiff),
-            },
-            prediction,
-          };
-
-          await cacheManager.set(cacheKey, payload, TTL.MATCH);
-          return { success: true, data: payload };
-        }
-
-        case 'FETCH_PLAYER_INSIGHT': {
-          const { playerId, steamId64, forceRefresh } = message.payload;
-          const pCacheKey = `player_stats:${playerId}`;
-
-          let pStats = !forceRefresh ? await cacheManager.get<FaceitPlayerFullStats>(pCacheKey) : null;
-          if (!pStats) {
-            pStats = await faceitApi.getPlayerStats(playerId);
-            if (pStats) {
-              await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
-            }
-          }
-
-          if (!pStats) {
-            return { success: false, error: 'Player stats not found' };
-          }
-
-          let sData: SteamFullData | undefined;
-          const targetSteamId = steamId64 || pStats.steamId64;
-          if (targetSteamId) {
-            const sCacheKey = `steam_data:${targetSteamId}`;
-            sData = !forceRefresh ? (await cacheManager.get<SteamFullData>(sCacheKey)) || undefined : undefined;
-            if (!sData) {
-              sData = await steamApi.getPlayerFullData(targetSteamId);
-              await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
-            }
-          }
-
-          const risk = calculateRiskScore(pStats, sData);
-          return {
-            success: true,
-            data: {
-              stats: pStats,
-              steam: sData,
-              risk,
-            },
-          };
-        }
-
-        case 'GET_CACHE_STATS': {
-          const stats = await cacheManager.getStats();
-          return { success: true, data: stats };
-        }
-
-        case 'CLEAR_CACHE': {
-          await cacheManager.clear();
-          return { success: true, data: { cleared: true } };
-        }
-
+        case 'GET_SETTINGS':
+          return this.handleGetSettings();
+        case 'SAVE_SETTINGS':
+          return this.handleSaveSettings(message.payload);
+        case 'FETCH_LOBBY_INSIGHT':
+          return this.handleFetchLobbyInsight(message.payload);
+        case 'FETCH_PLAYER_INSIGHT':
+          return this.handleFetchPlayerInsight(message.payload);
+        case 'GET_CACHE_STATS':
+          return this.handleGetCacheStats();
+        case 'CLEAR_CACHE':
+          return this.handleClearCache();
         default:
           return { success: false, error: 'Unknown message type' };
       }
@@ -273,4 +59,231 @@ export class BackgroundMessageHandler {
       return { success: false, error: err.message || 'Internal error' };
     }
   }
+
+  private async handleGetSettings(): Promise<MessageResponse> {
+    const settings = await this.loadSettings();
+    return { success: true, data: settings };
+  }
+
+  private async handleSaveSettings(payload: any): Promise<MessageResponse> {
+    this.settings = { ...this.settings, ...payload };
+    await cacheManager.set('settings', this.settings, TTL.SETTINGS);
+    return { success: true, data: this.settings };
+  }
+
+  private async handleFetchLobbyInsight(payload: any): Promise<MessageResponse> {
+    const { matchId, forceRefresh } = payload;
+    const cacheKey = `match_analysis:${matchId}`;
+
+    if (!forceRefresh) {
+      const cachedPayload = await cacheManager.get<LobbyAnalysisPayload>(cacheKey);
+      if (cachedPayload) {
+        return { success: true, data: cachedPayload };
+      }
+    }
+
+    const match = await faceitApi.getMatchDetails(matchId);
+    if (!match) {
+      return { success: false, error: `Could not fetch match details for ${matchId}` };
+    }
+
+    const f1Roster = match.teams?.faction1?.roster || [];
+    const f2Roster = match.teams?.faction2?.roster || [];
+    const allPlayers = [...f1Roster, ...f2Roster];
+
+    const playersStats: Record<string, FaceitPlayerFullStats> = {};
+    const steamData: Record<string, SteamFullData> = {};
+    const riskAnalysis: Record<string, RiskAnalysisResult> = {};
+
+    // Fetch all players concurrently with cache
+    await Promise.all(
+      allPlayers.map(async (player) => {
+        const pId = player.player_id;
+        if (!pId) return;
+
+        // 1. Player Stats
+        const pCacheKey = `player_stats:${pId}`;
+        let pStats: FaceitPlayerFullStats | null = null;
+
+        if (!forceRefresh) {
+          pStats = await cacheManager.get<FaceitPlayerFullStats>(pCacheKey);
+        }
+
+        if (!pStats) {
+          pStats = await faceitApi.getPlayerStats(pId, player.nickname);
+          if (pStats) {
+            await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
+          }
+        }
+
+        if (pStats) {
+          playersStats[pId] = pStats;
+
+          // 2. Steam Data
+          const steamId = pStats.steamId64 || player.game_player_id;
+          if (steamId) {
+            const sCacheKey = `steam_data:${steamId}`;
+            let sData: SteamFullData | null = null;
+
+            if (!forceRefresh) {
+              sData = await cacheManager.get<SteamFullData>(sCacheKey);
+            }
+
+            if (!sData) {
+              sData = await steamApi.getPlayerFullData(steamId);
+              await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
+            }
+
+            if (sData) {
+              steamData[pId] = sData;
+            }
+          }
+
+          // 3. Red Flags Risk Score
+          riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
+        }
+      })
+    );
+
+    // Calculate Team Elo and Probabilities
+    const f1Elos = f1Roster.map((p) => playersStats[p.player_id]?.elo || p.elo || 1000);
+    const f2Elos = f2Roster.map((p) => playersStats[p.player_id]?.elo || p.elo || 1000);
+
+    const f1TotalElo = f1Elos.reduce((a, b) => a + b, 0);
+    const f2TotalElo = f2Elos.reduce((a, b) => a + b, 0);
+    const f1AvgElo = f1Elos.length > 0 ? Math.round(f1TotalElo / f1Elos.length) : 1000;
+    const f2AvgElo = f2Elos.length > 0 ? Math.round(f2TotalElo / f2Elos.length) : 1000;
+
+    const eloDiff = f1AvgElo - f2AvgElo;
+
+    // Projected Elo (+/-)
+    const projectedEloStakes = calculateProjectedElo(f1AvgElo, f2AvgElo);
+
+    const f1Kds = f1Roster.map((p) => playersStats[p.player_id]?.overallKd || 1.0);
+    const f2Kds = f2Roster.map((p) => playersStats[p.player_id]?.overallKd || 1.0);
+    const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a, b) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
+    const f2AvgKd = f2Kds.length > 0 ? parseFloat((f2Kds.reduce((a, b) => a + b, 0) / f2Kds.length).toFixed(2)) : 1.0;
+
+    const f1Hs = f1Roster.map((p) => playersStats[p.player_id]?.overallHsPercent || 0);
+    const f2Hs = f2Roster.map((p) => playersStats[p.player_id]?.overallHsPercent || 0);
+    const f1AvgHs = f1Hs.length > 0 ? Math.round(f1Hs.reduce((a, b) => a + b, 0) / f1Hs.length) : 0;
+    const f2AvgHs = f2Hs.length > 0 ? Math.round(f2Hs.reduce((a, b) => a + b, 0) / f2Hs.length) : 0;
+
+    const f1Adrs = f1Roster.map((p) => playersStats[p.player_id]?.overallAdr || 75);
+    const f2Adrs = f2Roster.map((p) => playersStats[p.player_id]?.overallAdr || 75);
+    const f1AvgAdr = f1Adrs.length > 0 ? Math.round(f1Adrs.reduce((a, b) => a + b, 0) / f1Adrs.length) : 75;
+    const f2AvgAdr = f2Adrs.length > 0 ? Math.round(f2Adrs.reduce((a, b) => a + b, 0) / f2Adrs.length) : 75;
+
+    // Calculate FCR team contribution share
+    const f1FullPlayers = f1Roster.map((r) => playersStats[r.player_id]).filter(Boolean);
+    const f2FullPlayers = f2Roster.map((r) => playersStats[r.player_id]).filter(Boolean);
+
+    const f1FcrMap = calculateTeamFcr(f1FullPlayers);
+    const f2FcrMap = calculateTeamFcr(f2FullPlayers);
+
+    for (const [id, fcr] of Object.entries(f1FcrMap)) {
+      if (playersStats[id]) playersStats[id].fcrContributionPercent = fcr;
+    }
+    for (const [id, fcr] of Object.entries(f2FcrMap)) {
+      if (playersStats[id]) playersStats[id].fcrContributionPercent = fcr;
+    }
+
+    // Premade Detection
+    const premadeGroups = detectPremades(match, playersStats);
+
+    // Advanced Multi-Factor Match Prediction (Elo + Map + Form + Premades + Smurfs)
+    const prediction = calculateAdvancedMatchPrediction({
+      f1AvgElo,
+      f2AvgElo,
+      f1Players: f1FullPlayers,
+      f2Players: f2FullPlayers,
+      selectedMap: match.selected_map,
+      premadeGroups,
+      riskAnalysis,
+      f1Fcr: f1FcrMap,
+      f2Fcr: f2FcrMap,
+    });
+
+    const out: LobbyAnalysisPayload = {
+      match,
+      playersStats,
+      steamData,
+      riskAnalysis,
+      premadeGroups,
+      teamSummary: {
+        faction1: {
+          totalElo: f1TotalElo,
+          avgElo: f1AvgElo,
+          winChancePercent: prediction.winChanceF1,
+          avgKd: f1AvgKd,
+          avgHsPercent: f1AvgHs,
+          avgAdr: f1AvgAdr,
+          projectedElo: projectedEloStakes.faction1,
+        },
+        faction2: {
+          totalElo: f2TotalElo,
+          avgElo: f2AvgElo,
+          winChancePercent: prediction.winChanceF2,
+          avgKd: f2AvgKd,
+          avgHsPercent: f2AvgHs,
+          avgAdr: f2AvgAdr,
+          projectedElo: projectedEloStakes.faction2,
+        },
+        eloDifference: Math.abs(eloDiff),
+      },
+      prediction,
+    };
+
+    await cacheManager.set(cacheKey, out, TTL.MATCH);
+    return { success: true, data: out };
+  }
+
+  private async handleFetchPlayerInsight(payload: any): Promise<MessageResponse> {
+    const { playerId, steamId64, forceRefresh } = payload;
+    const pCacheKey = `player_stats:${playerId}`;
+
+    let pStats = !forceRefresh ? await cacheManager.get<FaceitPlayerFullStats>(pCacheKey) : null;
+    if (!pStats) {
+      pStats = await faceitApi.getPlayerStats(playerId);
+      if (pStats) {
+        await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
+      }
+    }
+
+    if (!pStats) {
+      return { success: false, error: 'Player stats not found' };
+    }
+
+    let sData: SteamFullData | undefined;
+    const targetSteamId = steamId64 || pStats.steamId64;
+    if (targetSteamId) {
+      const sCacheKey = `steam_data:${targetSteamId}`;
+      sData = !forceRefresh ? (await cacheManager.get<SteamFullData>(sCacheKey)) || undefined : undefined;
+      if (!sData) {
+        sData = await steamApi.getPlayerFullData(targetSteamId);
+        await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
+      }
+    }
+
+    const risk = calculateRiskScore(pStats, sData);
+    return {
+      success: true,
+      data: {
+        stats: pStats,
+        steam: sData,
+        risk,
+      },
+    };
+  }
+
+  private async handleGetCacheStats(): Promise<MessageResponse> {
+    const stats = await cacheManager.getStats();
+    return { success: true, data: stats };
+  }
+
+  private async handleClearCache(): Promise<MessageResponse> {
+    await cacheManager.clear();
+    return { success: true, data: { cleared: true } };
+  }
 }
+
