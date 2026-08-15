@@ -6,7 +6,7 @@ interface PlayerMapsTabProps {
   stats: FaceitPlayerFullStats;
 }
 
-export const PlayerMapsTab: React.FC<PlayerMapsTabProps> = ({ stats }) => {
+export const PlayerMapsTab = React.memo<PlayerMapsTabProps>(({ stats }) => {
   const [sortBy, setSortBy] = useState<'matches' | 'winRate' | 'kd'>('matches');
 
   const mapsList = Object.values(stats.mapStats || {});
@@ -123,7 +123,7 @@ export const PlayerMapsTab: React.FC<PlayerMapsTabProps> = ({ stats }) => {
             <tr className="border-b border-faceit-border/80 text-faceit-muted font-bold text-[10px] uppercase tracking-wider bg-black/20">
               <th className="py-2.5 px-3">Map</th>
               <th className="py-2.5 px-3 text-center">Matches</th>
-              <th className="py-2.5 px-3">Win Rate</th>
+              <th className="py-2.5 px-3 text-center">Win Rate</th>
               <th className="py-2.5 px-3 text-center">K/D</th>
               <th className="py-2.5 px-3 text-center">Avg Kills</th>
               <th className="py-2.5 px-3 text-center">ADR</th>
@@ -184,11 +184,11 @@ export const PlayerMapsTab: React.FC<PlayerMapsTabProps> = ({ stats }) => {
                   </td>
 
                   <td className="py-2.5 px-3 text-center text-zinc-300">
-                    {m.avgKills ? m.avgKills.toFixed(1) : ((m.kd * 18).toFixed(1))}
+                    {m.avgKills ? m.avgKills.toFixed(1) : '—'}
                   </td>
 
                   <td className="py-2.5 px-3 text-center text-zinc-300">
-                    {m.avgAdr != null ? Math.round(m.avgAdr) : 75}
+                    {m.avgAdr != null ? Math.round(m.avgAdr) : '—'}
                   </td>
 
                   <td className="py-2.5 px-3 text-center text-zinc-300">
@@ -202,4 +202,5 @@ export const PlayerMapsTab: React.FC<PlayerMapsTabProps> = ({ stats }) => {
       </div>
     </div>
   );
-};
+});
+PlayerMapsTab.displayName = "PlayerMapsTab";

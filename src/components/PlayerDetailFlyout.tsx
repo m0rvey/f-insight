@@ -34,6 +34,10 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const modalRef = React.useRef<HTMLDivElement>(null);
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const headerAdr = stats.last30Adr ?? stats.overallAdr;
 
   useEffect(() => {
     modalRef.current?.focus();
@@ -42,12 +46,12 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   return (
     <div
@@ -132,9 +136,9 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                 <span>•</span>
                 <span>{stats.overallWinRate.toFixed(0)}% Win Rate</span>
                 <span>•</span>
-                <span>{stats.overallKd.toFixed(2)} K/D</span>
+                <span>{(stats.last30Kd ?? stats.overallKd).toFixed(2)} K/D</span>
                 <span>•</span>
-                <span>{Math.round(stats.overallAdr)} ADR</span>
+                <span>{headerAdr !== undefined ? Math.round(headerAdr) : '—'} ADR</span>
               </div>
             </div>
           </div>

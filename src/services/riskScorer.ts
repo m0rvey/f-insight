@@ -14,6 +14,7 @@ export function calculateRiskScore(
   const kd = player.overallKd || 1.0;
   const winRate = player.overallWinRate || 50;
   const recentKd = player.recentKd || kd;
+  const recentAdr = player.recentAdr || 75;
 
   // 1. Matches vs Elo check (Core Smurf Curve)
   if (elo >= 2200 && totalMatches < 100) {
@@ -115,6 +116,69 @@ export function calculateRiskScore(
     score -= 10;
   }
 
+  // 2b. ADR Anomaly (reliable ADR only — no fabricated fallbacks)
+  if (player.overallAdr !== undefined && player.overallAdr >= 95 && totalMatches < 300) {
+    const weight = 22;
+    score += weight;
+    flags.push({
+      id: 'extreme_adr',
+      title: 'Exceptional Average Damage (95+)',
+      description: `Lifetime ADR of ${player.overallAdr.toFixed(0)} is far above the typical range`,
+      weight,
+      severity: 'danger',
+      category: 'ADR_ANOMALY',
+    });
+  }
+  if (player.last30Adr !== undefined && player.last30Adr >= 100 && (player.last30AdrMatches ?? 0) >= 3) {
+    const weight = 18;
+    score += weight;
+    flags.push({
+      id: 'recent_extreme_adr',
+      title: 'Recent ADR Anomaly (100+)',
+      description: `ADR of ${player.last30Adr} across the last 30 matches`,
+      weight,
+      severity: 'warning',
+      category: 'ADR_ANOMALY',
+    });
+  }
+  if (recentAdr >= 95 && player.overallAdr !== undefined && recentAdr >= player.overallAdr * 1.2) {
+    const weight = 12;
+    score += weight;
+    flags.push({
+      id: 'recent_adr_spike',
+      title: 'Recent ADR Spike',
+      description: `Last 5 games ADR (${recentAdr}) is 20%+ above lifetime baseline (${player.overallAdr.toFixed(0)})`,
+      weight,
+      severity: 'warning',
+      category: 'ADR_ANOMALY',
+    });
+  }
+
+  // 2c. Headshot Rate Anomaly
+  if ((player.last30HsPercent ?? 0) >= 60) {
+    const weight = 10;
+    score += weight;
+    flags.push({
+      id: 'extreme_hs_recent',
+      title: 'Extreme Headshot Rate (60%+)',
+      description: `Average ${player.last30HsPercent}% headshots over the last 30 matches`,
+      weight,
+      severity: 'warning',
+      category: 'HS_ANOMALY',
+    });
+  } else if (player.overallHsPercent >= 60 && kd >= 1.5) {
+    const weight = 8;
+    score += weight;
+    flags.push({
+      id: 'extreme_hs',
+      title: 'High Headshot Rate (60%+)',
+      description: `Lifetime headshot rate of ${player.overallHsPercent.toFixed(0)}% with K/D ${kd.toFixed(2)}`,
+      weight,
+      severity: 'info',
+      category: 'HS_ANOMALY',
+    });
+  }
+
   // 3. Win Rate Anomaly
   if (winRate >= 80 && totalMatches >= 10) {
     const weight = 30;
@@ -151,6 +215,33 @@ export function calculateRiskScore(
     });
   }
 
+  // 3b. Recent (30 matches) Win Rate Anomaly
+  if (player.last30WinRate !== undefined && (player.last30Matches ?? 0) >= 5) {
+    if (player.last30WinRate >= 85 && totalMatches < 300) {
+      const weight = 15;
+      score += weight;
+      flags.push({
+        id: 'recent_dominance',
+        title: 'Recent Dominance (85%+)',
+        description: `Won ${player.last30WinRate}% of the last ${player.last30Matches} matches`,
+        weight,
+        severity: 'warning',
+        category: 'WINRATE_ANOMALY',
+      });
+    } else if (player.last30WinRate >= 75 && elo >= 1500) {
+      const weight = 8;
+      score += weight;
+      flags.push({
+        id: 'elevated_recent_winrate',
+        title: 'High Recent Win Rate (75%+)',
+        description: `Won ${player.last30WinRate}% of the last ${player.last30Matches} matches`,
+        weight,
+        severity: 'info',
+        category: 'WINRATE_ANOMALY',
+      });
+    }
+  }
+
   // 4. Recent Carry / Booster Spike
   if (recentKd >= 1.75 && recentKd >= kd * 1.35 && totalMatches >= 10) {
     const weight = 15;
@@ -159,6 +250,20 @@ export function calculateRiskScore(
       id: 'recent_kd_spike',
       title: 'Recent Performance Hard Spike',
       description: `Recent 5 games K/D (${recentKd.toFixed(2)}) is significantly higher than lifetime baseline (${kd.toFixed(2)})`,
+      weight,
+      severity: 'warning',
+      category: 'KD_ANOMALY',
+    });
+  }
+
+  // 4b. Mid-Term (30 matches) K/D Spike — less noisy than the 5-game sample
+  if (player.last30Kd !== undefined && player.last30Kd >= 1.5 && player.last30Kd >= kd * 1.3 && totalMatches >= 30) {
+    const weight = 10;
+    score += weight;
+    flags.push({
+      id: 'midterm_kd_spike',
+      title: 'Mid-Term K/D Spike',
+      description: `Last 30 games K/D (${player.last30Kd.toFixed(2)}) well above lifetime baseline (${kd.toFixed(2)})`,
       weight,
       severity: 'warning',
       category: 'KD_ANOMALY',
@@ -234,30 +339,85 @@ export function calculateRiskScore(
     }
   } else if (steam?.isPrivate) {
     isPrivateSteam = true;
-    if (totalMatches < 100 && elo >= 1600) {
-      const weight = 15;
+    flags.push({
+      id: 'private_steam',
+      title: 'Hidden Account (Private Steam)',
+      description: 'Steam hours and profile details are hidden by user privacy settings',
+      weight: 0,
+      severity: 'info',
+      category: 'PRIVATE_PROFILE',
+    });
+
+    // Hidden profiles hide the strongest smurf signals (hours, age, bans) — scale suspicion with Elo
+    const hiddenWeight = elo >= 2200 ? 25 : elo >= 2000 ? 22 : elo >= 1600 ? 15 : elo >= 1350 ? 10 : 6;
+    if (hiddenWeight >= 15) {
+      score += hiddenWeight;
+      flags.push({
+        id: 'hidden_high_elo',
+        title: 'Hidden Account with High Elo',
+        description: `Private Steam profile with ${elo} Elo`,
+        weight: hiddenWeight,
+        severity: hiddenWeight >= 22 ? 'danger' : 'warning',
+        category: 'PRIVATE_PROFILE',
+      });
+    }
+    if (totalMatches < 100) {
+      const weight = 10;
       score += weight;
       flags.push({
-        id: 'private_steam_fresh_high_elo',
-        title: 'Hidden Account with High Elo',
-        description: `Private Steam profile on fresh account with ${elo} Elo`,
+        id: 'private_steam_fresh_account',
+        title: 'Hidden Account on Fresh FACEIT Account',
+        description: `Private Steam profile with only ${totalMatches} matches on record`,
         weight,
         severity: 'warning',
         category: 'PRIVATE_PROFILE',
       });
-    } else {
+    }
+    const strongKd = player.last30Kd ?? recentKd;
+    if (strongKd >= 1.6) {
+      const weight = 8;
+      score += weight;
       flags.push({
-        id: 'private_steam',
-        title: 'Hidden Account (Private Steam)',
-        description: 'Steam hours and profile details are hidden by user privacy settings',
-        weight: 0,
-        severity: 'info',
+        id: 'hidden_strong_performance',
+        title: 'Hidden Profile with Strong Recent Performance',
+        description: `Hidden Steam profile with recent K/D of ${strongKd.toFixed(2)}`,
+        weight,
+        severity: 'warning',
         category: 'PRIVATE_PROFILE',
       });
     }
   } else {
     // steam === undefined — no Steam ID available, treat as unknown (no privacy assumption)
     isPrivateSteam = false;
+  }
+
+  // 6. FACEIT Account Age (independent of Steam privacy)
+  const regDate = player.registrationDate ? new Date(player.registrationDate) : null;
+  if (regDate && !isNaN(regDate.getTime())) {
+    const faceitAgeYears = (Date.now() - regDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+    if (faceitAgeYears < 0.5 && elo >= 1350) {
+      const weight = 22;
+      score += weight;
+      flags.push({
+        id: 'fresh_faceit_high_elo',
+        title: 'Fresh FACEIT Account (<6 Months)',
+        description: `FACEIT account created ${faceitAgeYears.toFixed(1)} years ago with ${elo} Elo`,
+        weight,
+        severity: 'danger',
+        category: 'ACCOUNT_AGE',
+      });
+    } else if (faceitAgeYears < 1.0 && elo >= 1600) {
+      const weight = 18;
+      score += weight;
+      flags.push({
+        id: 'young_faceit_high_elo',
+        title: 'Young FACEIT Account (<1 Year)',
+        description: `FACEIT account created ${faceitAgeYears.toFixed(1)} years ago with ${elo} Elo`,
+        weight,
+        severity: 'warning',
+        category: 'ACCOUNT_AGE',
+      });
+    }
   }
 
   // Normalize score between 0 and 100

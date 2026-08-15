@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { LobbyAnalysisPayload } from '../types/messages';
 import { ExtensionSettings } from '../types/settings';
 import { ServerConnectBar } from './lobby/ServerConnectBar';
@@ -54,42 +54,54 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   const isF2Perspective = currentUser?.faction === 'faction2';
 
   // Use the forecastEngine map ranker for Top Map
-  const getPlayer = (r: { player_id?: string; nickname?: string }) => {
-    const id = r.player_id || '';
-    if (id && playersStats?.[id]) return playersStats[id];
-    if (r.nickname) {
-      const found = Object.values(playersStats || {}).find(
-        (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
-      );
-      if (found) return found;
-    }
-    return undefined;
-  };
+  const { f1Players, f2Players } = useMemo(() => {
+    const getPlayer = (r: { player_id?: string; nickname?: string }) => {
+      const id = r.player_id || '';
+      if (id && playersStats?.[id]) return playersStats[id];
+      if (r.nickname) {
+        const found = Object.values(playersStats || {}).find(
+          (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
+        );
+        if (found) return found;
+      }
+      return undefined;
+    };
 
-  const f1Players = (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
-  const f2Players = (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
-  
-  const votingEntities = match.voting?.map?.entities || [];
-  const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
+    return {
+      f1Players: (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p)),
+      f2Players: (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p)),
+    };
+  }, [f1.roster, f2.roster, playersStats]);
 
   // Use the engine-computed ranking when available (computed once per payload state)
-  const rankedMaps = vetoEnabled
-    ? propsRankedMaps ?? calculateMapVetoRanking({
-        f1Players,
-        f2Players,
-        availableMaps,
-        userFaction: currentUser?.faction,
-      })
-    : [];
+  const rankedMaps = useMemo(() => {
+    if (!vetoEnabled) return [];
+    if (propsRankedMaps) return propsRankedMaps;
+    const availableMaps = (match.voting?.map?.entities || [])
+      .map((e) => e.name || (e as any).guid || '')
+      .filter(Boolean);
+    return calculateMapVetoRanking({
+      f1Players,
+      f2Players,
+      availableMaps,
+      userFaction: currentUser?.faction,
+    });
+  }, [vetoEnabled, propsRankedMaps, match.voting?.map?.entities, f1Players, f2Players, currentUser?.faction]);
 
   // Best maps for each team — advantageDelta is always from the current user's
   // perspective (f1 when unknown, f2 when the user is on faction2)
-  const f1TopMap = [...rankedMaps].sort((a, b) =>
-    isF2Perspective ? a.advantageDelta - b.advantageDelta : b.advantageDelta - a.advantageDelta
-  )[0];
-  const f2TopMap = [...rankedMaps].sort((a, b) =>
-    isF2Perspective ? b.advantageDelta - a.advantageDelta : a.advantageDelta - b.advantageDelta
-  )[0];
+  const f1TopMap = useMemo(
+    () => [...rankedMaps].sort((a, b) =>
+      isF2Perspective ? a.advantageDelta - b.advantageDelta : b.advantageDelta - a.advantageDelta
+    )[0],
+    [rankedMaps, isF2Perspective]
+  );
+  const f2TopMap = useMemo(
+    () => [...rankedMaps].sort((a, b) =>
+      isF2Perspective ? b.advantageDelta - a.advantageDelta : a.advantageDelta - b.advantageDelta
+    )[0],
+    [rankedMaps, isF2Perspective]
+  );
 
   const f1TopMapSummary = f1TopMap ? { name: f1TopMap.mapName, wr: f1TopMap.f1WinRate } : null;
   const f2TopMapSummary = f2TopMap ? { name: f2TopMap.mapName, wr: f2TopMap.f2WinRate } : null;
@@ -159,11 +171,11 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-faceit-orange/20 text-faceit-orange border border-faceit-orange/40">
                   CS2 5v5
                 </span>
-                <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${statusInfo.color}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${statusInfo.color}`}>
                   {statusInfo.label}
                 </span>
                 {match.selected_map && (
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                     <Sparkles className="w-3 h-3" />
                     {match.selected_map.replace(/^(cs2_|csgo_|de_)/, '')}
                   </span>
@@ -241,12 +253,19 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
         {isVisible && (
           <div className={`${compact ? 'mt-3 space-y-2.5' : 'mt-4 space-y-3.5'}`}>
             {!teamSummary ? (
-              <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-faceit-orange" />
-                  Calculating Match Prediction & Risk Factors...
-                </span>
-              </div>
+              isLoading ? (
+                <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-faceit-orange" />
+                    Calculating Match Prediction & Risk Factors...
+                  </span>
+                </div>
+              ) : (
+                <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 border border-white/5 bg-black/20 rounded-xl text-zinc-500 font-mono text-xs shadow-inner">
+                  <span>FACEIT API unreachable — insights unavailable</span>
+                  <span className="text-[10px] text-zinc-600">Press Alt+R to retry</span>
+                </div>
+              )
             ) : (
               <>
                 <ProbabilityBar 
@@ -286,7 +305,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                           <span className="font-extrabold text-zinc-100 uppercase tracking-wide">
                             {selectedMapRankItem.mapName} Matchup
                           </span>
-                          <span className="text-[10px] px-2 py-0.2 rounded-full font-mono font-bold bg-white/10 border border-white/10 text-zinc-300">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-white/10 border border-white/10 text-zinc-300">
                             Map Impact
                           </span>
                         </div>

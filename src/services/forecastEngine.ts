@@ -50,8 +50,8 @@ export function calculateTeamFcr(
 
   const powers = teamPlayers.map((p) => {
     const eloWeight = Math.max(500, p.elo || 1000) / 1000;
-    const kdWeight = Math.max(0.4, p.overallKd || 1.0);
-    const adrWeight = 1 + ((p.overallAdr || 75) - 75) / 150;
+    const kdWeight = Math.max(0.4, p.last30Kd ?? p.overallKd ?? 1.0);
+    const adrWeight = 1 + ((p.last30Adr ?? p.overallAdr ?? 75) - 75) / 150;
     const power = eloWeight * kdWeight * Math.max(0.6, adrWeight);
     return { id: p.playerId, power };
   });
@@ -71,8 +71,8 @@ export function calculateTeamFcr(
  */
 export function evaluatePlayerForm(
   recentMatches: PlayerRecentMatch[],
-  overallKd: number,
-  overallAdr: number
+  overallKd?: number,
+  overallAdr?: number
 ): { formStatus: PlayerFormStatus; recentKd: number; recentAdr: number } {
   if (!recentMatches || recentMatches.length < 2) {
     return {
@@ -287,7 +287,7 @@ export function calculateAdvancedMatchPrediction(params: {
     let topScore = -1;
     for (const p of players) {
       const fcr = fcrMap[p.playerId] || 20;
-      const score = fcr * 1.5 + (p.overallKd || 1.0) * 10;
+      const score = fcr * 1.5 + (p.last30Kd ?? p.overallKd ?? 1.0) * 10;
       if (score > topScore) {
         topScore = score;
         topPlayer = p;
@@ -297,7 +297,7 @@ export function calculateAdvancedMatchPrediction(params: {
       ? {
           nickname: topPlayer.nickname,
           fcr: fcrMap[topPlayer.playerId] || 20,
-          kd: topPlayer.overallKd || 1.0,
+          kd: topPlayer.last30Kd ?? topPlayer.overallKd ?? 1.0,
           elo: topPlayer.elo || 1000,
         }
       : undefined;

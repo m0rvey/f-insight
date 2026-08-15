@@ -17,7 +17,6 @@ interface PlayerBadgeProps {
   steam?: SteamFullData;
   risk?: RiskAnalysisResult;
   premadeGroup?: PremadeGroup;
-  selectedMap?: string;
   isCurrentUser?: boolean;
   showFcr?: boolean;
   showForm?: boolean;
@@ -32,13 +31,12 @@ const RISK_BADGE_STYLES: Record<string, string> = {
   LOW: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
 };
 
-export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
+export const PlayerBadge = React.memo<PlayerBadgeProps>(({
   playerId,
   stats,
   steam,
   risk,
   premadeGroup,
-  selectedMap,
   isCurrentUser,
   showFcr = true,
   showForm = true,
@@ -47,18 +45,18 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
 }) => {
   if (!stats) {
     return (
-      <div className="w-full mt-1.5 p-2 rounded-xl bg-[#121215]/80 border border-white/5 text-center text-[10px] text-zinc-500 font-mono animate-pulse">
-        <span>Loading stats...</span>
+      <div className="w-full mt-2 p-2 rounded-xl bg-faceit-dark/80 border border-white/5 text-center text-[10px] text-zinc-500 font-mono">
+        <span>Stats unavailable — Alt+R to retry</span>
       </div>
     );
   }
 
-  const mapNameClean = selectedMap?.replace('de_', '').toLowerCase();
-  const mapStat = mapNameClean && stats.mapStats ? stats.mapStats[mapNameClean] : undefined;
-
-  const displayKd = mapStat ? mapStat.kd : stats.overallKd;
-  const displayHs = mapStat ? mapStat.hsPercent : stats.overallHsPercent;
-  const displayAdr = mapStat?.avgAdr || stats.overallAdr;
+  // Stats over the last 30 matches, falling back to lifetime when unavailable
+  const displayKd = stats.last30Kd ?? stats.overallKd;
+  const displayHs = stats.last30HsPercent ?? (stats.overallHsPercent > 0 ? stats.overallHsPercent : undefined);
+  const displayAdr = stats.last30Adr ?? stats.overallAdr;
+  const displayWinRate = stats.last30WinRate ?? (stats.overallWinRate > 0 ? stats.overallWinRate : undefined);
+  const statsWindow = stats.last30Matches !== undefined ? `last ${stats.last30Matches} matches` : 'lifetime stats';
 
   const riskBadgeStyle = risk ? (RISK_BADGE_STYLES[risk.level] || RISK_BADGE_STYLES.LOW) : null;
 
@@ -74,19 +72,17 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
       } ${
         isCurrentUser
           ? 'bg-cyan-950/25 hover:bg-cyan-950/40 border-cyan-500/40 hover:border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
-          : 'bg-[#141418]/95 hover:bg-[#1A1A20] border-white/10 hover:border-faceit-orange/60 hover:shadow-glow-orange'
+          : 'bg-faceit-card/95 hover:bg-faceit-card-hover border-white/10 hover:border-faceit-orange/60 hover:shadow-glow-orange'
       }`}
       title={isCurrentUser ? 'Your Profile (Click to view full details)' : 'Click to view deep player performance, match history, and risk analysis'}
     >
-      {/* Top Row: Key Performance Metrics */}
+      {/* Top Row: Key Performance Metrics (last 30 matches) */}
       <div className="grid grid-cols-4 gap-1 text-center font-mono">
         {/* K/D */}
-        <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">
-            {mapStat ? 'MAP K/D' : 'K/D'}
-          </div>
+        <div className="stat-cell p-1 min-w-0" title={`Average K/D over the ${statsWindow}`}>
+          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">K/D 30M</div>
           <div
-            className={`text-xs font-black mt-0.5 ${
+            className={`text-xs font-black mt-0.5 truncate ${
               displayKd >= 1.25
                 ? 'text-emerald-400'
                 : displayKd < 0.95
@@ -99,36 +95,38 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
         </div>
 
         {/* ADR */}
-        <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">ADR</div>
-          <div
-            className={`text-xs font-black mt-0.5 ${
-              displayAdr >= 85
-                ? 'text-emerald-400'
-                : displayAdr < 70
-                ? 'text-zinc-400'
-                : 'text-zinc-100'
-            }`}
-          >
-            {Math.round(displayAdr)}
-          </div>
+        <div className="stat-cell p-1 min-w-0" title={`Average ADR over the ${statsWindow}`}>
+          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">ADR 30M</div>
+          {displayAdr !== undefined ? (
+            <div
+              className={`text-xs font-black mt-0.5 truncate ${
+                displayAdr >= 85
+                  ? 'text-emerald-400'
+                  : displayAdr < 70
+                  ? 'text-zinc-400'
+                  : 'text-zinc-100'
+              }`}
+            >
+              {Math.round(displayAdr)}
+            </div>
+          ) : (
+            <div className="text-xs font-black text-zinc-500 mt-0.5">—</div>
+          )}
         </div>
 
         {/* HS% */}
-        <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">HS%</div>
-          <div className="text-xs font-bold text-zinc-200 mt-0.5">
-            {Math.round(displayHs)}%
+        <div className="stat-cell p-1 min-w-0" title={`Average headshot % over the ${statsWindow}`}>
+          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">HS% 30M</div>
+          <div className="text-xs font-black text-zinc-100 mt-0.5 truncate">
+            {displayHs !== undefined ? `${Math.round(displayHs)}%` : <span className="text-zinc-500">—</span>}
           </div>
         </div>
 
         {/* Win Rate & Matches */}
-        <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">
-            {mapStat ? 'MAP WR' : 'WIN%'}
-          </div>
-          <div className="text-[10px] font-bold text-zinc-200 mt-0.5 whitespace-nowrap">
-            {mapStat ? `${mapStat.winRate}%` : stats.overallWinRate === 0 ? '—' : `${stats.overallWinRate.toFixed(0)}%`}
+        <div className="stat-cell p-1 min-w-0" title={`Win rate over the ${statsWindow}`}>
+          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">WR 30M</div>
+          <div className="text-xs font-black text-zinc-100 mt-0.5 truncate">
+            {displayWinRate !== undefined ? `${displayWinRate.toFixed(0)}%` : <span className="text-zinc-500">—</span>}
           </div>
         </div>
       </div>
@@ -209,7 +207,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
               <span>Smurf: {risk.score}%</span>
             </span>
           ) : (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
               <span>Smurf: —</span>
             </span>
           )}
@@ -217,10 +215,10 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
           {/* Steam Hours or Hidden Account */}
           {steam?.fetchError ? (
             <span
-              className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700"
-              title="Steam profile could not be fetched"
+              className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700"
+              title="Steam profile could not be fetched — hours unavailable"
             >
-              Steam N/A
+              Hours Hidden
             </span>
           ) : steam && !steam.isPrivate && steam.playtime?.cs2HoursTotal ? (
             <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
@@ -229,9 +227,9 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
           ) : steam?.isPrivate ? (
             <span
               className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
-              title="Steam profile is hidden/private"
+              title="Steam profile is hidden/private — hours unavailable"
             >
-              Hidden account
+              Hours Hidden
             </span>
           ) : null}
         </div>
@@ -252,4 +250,5 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
       </div>
     </div>
   );
-};
+});
+PlayerBadge.displayName = "PlayerBadge";

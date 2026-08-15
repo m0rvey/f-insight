@@ -6,7 +6,7 @@ interface PlayerRiskTabProps {
   risk?: RiskAnalysisResult;
 }
 
-export const PlayerRiskTab: React.FC<PlayerRiskTabProps> = ({ risk }) => {
+export const PlayerRiskTab = React.memo<PlayerRiskTabProps>(({ risk }) => {
   if (!risk) {
     return (
       <div className="p-4 rounded-xl border border-faceit-border/80 bg-faceit-card flex items-center gap-3">
@@ -82,4 +82,5 @@ export const PlayerRiskTab: React.FC<PlayerRiskTabProps> = ({ risk }) => {
       )}
     </div>
   );
-};
+});
+PlayerRiskTab.displayName = "PlayerRiskTab";

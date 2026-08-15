@@ -73,6 +73,76 @@ describe('parsePlayerPayload', () => {
     expect(result.recentMatches[0].kills).toBe(20);
     expect(result.recentMatches[0].kd).toBeCloseTo(1.33);
     expect(result.recentMatches[0].map).toBe('mirage');
+    expect(result.recentMatches[0].adr).toBe(90);
+    expect(result.last30Matches).toBe(1);
+    expect(result.last30Kd).toBeCloseTo(1.33);
+    expect(result.last30Adr).toBe(90);
+    expect(result.last30AdrMatches).toBe(1);
+    expect(result.last30WinRate).toBe(100);
+  });
+
+  it('should NOT fabricate ADR when missing in lifetime and history', () => {
+    const user = { nickname: 'NoAdr', games: { cs2: { faceit_elo: 1200, skill_level: 5 } } };
+    const stats = {
+      lifetime: { m1: '50', k6: '50', k5: '1.1', k8: '40' },
+      segments: [],
+    };
+    const history = [{ i10: '1', i1: 'cs2_mirage', i6: '18', i8: '12', c2: '1.5' }];
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, user, stats, null, history);
+
+    expect(result.overallAdr).toBeUndefined();
+    expect(result.recentMatches[0].adr).toBeUndefined();
+    expect(result.last30Adr).toBeUndefined();
+    expect(result.last30AdrMatches).toBe(0);
+    expect(result.mapStats['mirage'].avgAdr).toBeUndefined();
+  });
+
+  it('should compute last-30 aggregates over real ADR/KD data only', () => {
+    const history = Array.from({ length: 40 }, (_, i) => {
+      const isWin = i % 2 === 0 ? '1' : '0';
+      const withAdr = i < 25; // first 25 (most recent) have ADR, last 15 do not
+      return {
+        i10: isWin,
+        i1: 'cs2_inferno',
+        i6: String(20 + i),
+        i8: String(10 + i),
+        c3: withAdr ? String(80 + (i % 20)) : undefined,
+        elo: String(1500 + i),
+      };
+    });
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, null, null, null, history);
+
+    expect(result.recentMatches).toHaveLength(40);
+    expect(result.last30Matches).toBe(30);
+    // Sum kills over first 30 (i=0..29): sum(20+i) = 20*30 + 435 = 1035
+    // Sum deaths over first 30 (i=0..29): sum(10+i) = 10*30 + 435 = 735
+    expect(result.last30Kd).toBeCloseTo(1035 / 735, 2);
+    // ADR real only: i=0..24 have ADR (80 + i%20)
+    const adrValues = Array.from({ length: 25 }, (_, i) => 80 + (i % 20));
+    const expectedAdr = Math.round(adrValues.reduce((s, a) => s + a, 0) / adrValues.length);
+    expect(result.last30Adr).toBe(expectedAdr);
+    expect(result.last30AdrMatches).toBe(25);
+    // 15 wins out of 30
+    expect(result.last30WinRate).toBe(50);
+  });
+
+  it('should compute last-30 aggregates when history has fewer than 30 matches', () => {
+    const history = Array.from({ length: 7 }, (_, i) => ({
+      i10: '1',
+      i1: 'cs2_mirage',
+      i6: '20',
+      i8: '15',
+      c3: '85',
+    }));
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, null, null, null, history);
+
+    expect(result.last30Matches).toBe(7);
+    expect(result.last30Kd).toBeCloseTo(20 / 15, 2);
+    expect(result.last30Adr).toBe(85);
+    expect(result.last30WinRate).toBe(100);
   });
 });
 

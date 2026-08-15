@@ -11,7 +11,7 @@ interface SettingToggleProps {
   variant?: 'detailed' | 'simple';
 }
 
-export const SettingToggle: React.FC<SettingToggleProps> = ({
+export const SettingToggle = React.memo<SettingToggleProps>(({
   title,
   description,
   checked,
@@ -51,4 +51,5 @@ export const SettingToggle: React.FC<SettingToggleProps> = ({
       />
     </div>
   );
-};
+});
+SettingToggle.displayName = "SettingToggle";

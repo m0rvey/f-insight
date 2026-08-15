@@ -16,12 +16,6 @@ export default {
           'card-hover': '#242429',
           border: '#2C2C32',
           muted: '#8A8A93'
-        },
-        risk: {
-          low: '#10B981',    // green
-          medium: '#F59E0B', // yellow
-          high: '#EF4444',   // red
-          critical: '#DC2626'
         }
       },
       fontFamily: {
@@ -29,10 +23,9 @@ export default {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace']
       },
       boxShadow: {
-        'glow-orange': '0 0 15px rgba(255, 85, 0, 0.25)',
+        'glow-orange': '0 0 20px rgba(255, 85, 0, 0.35)',
         'glow-green': '0 0 15px rgba(16, 185, 129, 0.25)',
-        'glow-red': '0 0 15px rgba(239, 68, 68, 0.25)',
-        'card': '0 8px 30px rgba(0, 0, 0, 0.6)'
+        'card': '0 12px 36px rgba(0, 0, 0, 0.75)'
       }
     },
   },

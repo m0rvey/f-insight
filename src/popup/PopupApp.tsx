@@ -149,7 +149,7 @@ export const PopupApp: React.FC = () => {
           : `${activeCoreParts.slice(0, -1).join(', ')} and ${activeCoreParts[activeCoreParts.length - 1]} are active.`;
 
   return (
-    <div className="w-[380px] min-h-[480px] bg-faceit-dark text-white font-sans flex flex-col selection:bg-faceit-orange selection:text-black">
+    <div className="w-[380px] max-w-full min-w-[320px] min-h-[480px] bg-faceit-dark text-white font-sans flex flex-col selection:bg-faceit-orange selection:text-black">
       {/* Header */}
       <div className="p-3.5 bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border-b border-faceit-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -177,10 +177,10 @@ export const PopupApp: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-4 border-b border-faceit-border/80 bg-zinc-900/80 text-xs text-center">
+      <div className="grid grid-cols-4 border-b border-faceit-border/80 bg-zinc-900/80 text-[11px] text-center">
         <button
           onClick={() => setActiveTab('status')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'status'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -191,7 +191,7 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('automation')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'automation'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -202,7 +202,7 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('modules')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'modules'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -213,7 +213,7 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('cache')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'cache'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'

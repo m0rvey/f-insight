@@ -38,7 +38,8 @@ export function parsePlayerPayload(
   const overallWinRate = parseFloat(pick(lifetime, 'Win Rate %', 'k6') || '0');
   const overallKd = parseFloat(pick(lifetime, 'Average K/D Ratio', 'K/D Ratio', 'k5') || '1.0');
   const overallHsPercent = parseFloat(pick(lifetime, 'Average Headshots %', 'Headshots %', 'k8') || '0');
-  const overallAdr = parseFloat(pick(lifetime, 'ADR', 'adr', 'c3') || '78.5');
+  const overallAdrRaw = pick(lifetime, 'ADR', 'adr', 'c3');
+  const overallAdr = overallAdrRaw ? parseFloat(overallAdrRaw) : undefined;
 
   // Segments breakdown (Maps) - Support both direct array and { segments: [...] }
   const mapStats: Record<string, MapSpecificStats> = {};
@@ -56,7 +57,8 @@ export function parsePlayerPayload(
       const mKd = parseFloat(pick(seg.stats, 'Average K/D Ratio', 'K/D Ratio') ?? pick(seg, 'k5', 'kd') ?? '1.0');
       const mHs = parseFloat(pick(seg.stats, 'Average Headshots %') ?? pick(seg, 'k8', 'hsPercent') ?? '0');
       const mAvgKills = parseFloat(pick(seg.stats, 'Average Kills') ?? pick(seg, 'k1', 'avgKills') ?? '0');
-      const mAdr = parseFloat(pick(seg.stats, 'ADR') ?? pick(seg, 'c3', 'adr') ?? '78.0');
+      const mAdrRaw = pick(seg.stats, 'ADR') ?? pick(seg, 'c3', 'adr');
+      const mAdr = mAdrRaw ? parseFloat(mAdrRaw) : undefined;
       const mWins = parseInt(pick(seg.stats, 'Wins') ?? pick(seg, 'm2', 'wins') ?? Math.round((mCount * mWinRate) / 100).toString(), 10);
 
       if (!mapStats[mapLabel] || mCount > mapStats[mapLabel].matches) {
@@ -82,7 +84,7 @@ export function parsePlayerPayload(
   let streakActive = true;
 
   // Map accumulator from match history
-  const historyMapStats: Record<string, { matches: number; wins: number; kills: number; deaths: number; adrSum: number }> = {};
+  const historyMapStats: Record<string, { matches: number; wins: number; kills: number; deaths: number; adrSum: number; adrCount: number }> = {};
 
   if (Array.isArray(history)) {
     for (let i = 0; i < history.length; i++) {
@@ -105,17 +107,23 @@ export function parsePlayerPayload(
       const mapName = (item.i1 || item.stats?.Map || item.map || '').replace(/^cs2_/, '').replace(/^de_/, '').toLowerCase();
       const kills = parseInt(item.i6 || item.stats?.Kills || item.kills || '0', 10);
       const deaths = parseInt(item.i8 || item.stats?.Deaths || item.deaths || '0', 10);
-      const adr = parseFloat(item.c3 || item.stats?.ADR || item.adr || '78.0');
+      const adrRaw = item.c3 || item.stats?.ADR || item.adr;
+      const adr = adrRaw ? parseFloat(adrRaw) : undefined;
+      const hsRaw = item.c4 || item.stats?.['Headshots %'];
+      const hsPercent = hsRaw ? parseFloat(hsRaw) : undefined;
 
       if (mapName) {
         if (!historyMapStats[mapName]) {
-          historyMapStats[mapName] = { matches: 0, wins: 0, kills: 0, deaths: 0, adrSum: 0 };
+          historyMapStats[mapName] = { matches: 0, wins: 0, kills: 0, deaths: 0, adrSum: 0, adrCount: 0 };
         }
         historyMapStats[mapName].matches++;
         if (isWin) historyMapStats[mapName].wins++;
         historyMapStats[mapName].kills += kills;
         historyMapStats[mapName].deaths += deaths;
-        historyMapStats[mapName].adrSum += adr;
+        if (adr !== undefined) {
+          historyMapStats[mapName].adrSum += adr;
+          historyMapStats[mapName].adrCount++;
+        }
       }
 
       const rawMatchElo = item.elo ? parseInt(item.elo.toString().replace(/,/g, ''), 10) : (item.i15 ? parseInt(item.i15, 10) : undefined);
@@ -143,7 +151,7 @@ export function parsePlayerPayload(
         kills,
         deaths,
         kd: parseFloat(item.c2 || item.stats?.['K/D Ratio'] || (deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2))),
-        hsPercent: parseFloat(item.c4 || item.stats?.['Headshots %'] || '0'),
+        hsPercent,
         adr,
         elo: rawMatchElo,
         eloDiff,
@@ -158,7 +166,7 @@ export function parsePlayerPayload(
       const mWins = hStats.wins;
       const mWr = mCount > 0 ? Math.round((mWins / mCount) * 100) : 50;
       const mKd = hStats.deaths > 0 ? parseFloat((hStats.kills / hStats.deaths).toFixed(2)) : 1.0;
-      const mAdr = mCount > 0 ? Math.round(hStats.adrSum / mCount) : 75;
+      const mAdr = hStats.adrCount > 0 ? Math.round(hStats.adrSum / hStats.adrCount) : undefined;
 
       mapStats[mName] = {
         mapName: mName,
@@ -172,6 +180,31 @@ export function parsePlayerPayload(
         losses: mCount - mWins,
       };
     }
+  }
+
+  // Last 30 matches aggregates (real data only, no fabricated fallbacks)
+  const last30 = recentMatches.slice(0, 30);
+  const last30Matches = last30.length;
+  let last30Kd: number | undefined;
+  let last30Adr: number | undefined;
+  let last30AdrMatches = 0;
+  let last30HsPercent: number | undefined;
+  let last30WinRate: number | undefined;
+
+  if (last30Matches > 0) {
+    const killsSum = last30.reduce((s, m) => s + (m.kills || 0), 0);
+    const deathsSum = last30.reduce((s, m) => s + (m.deaths || 0), 0);
+    last30Kd = deathsSum > 0 ? parseFloat((killsSum / deathsSum).toFixed(2)) : undefined;
+
+    const adrValues = last30.map((m) => m.adr).filter((a): a is number => a !== undefined && a > 0);
+    last30AdrMatches = adrValues.length;
+    last30Adr = adrValues.length > 0 ? Math.round(adrValues.reduce((s, a) => s + a, 0) / adrValues.length) : undefined;
+
+    const hsValues = last30.map((m) => m.hsPercent).filter((v): v is number => v !== undefined);
+    last30HsPercent = hsValues.length > 0 ? Math.round(hsValues.reduce((s, v) => s + v, 0) / hsValues.length) : undefined;
+
+    const wins30 = last30.filter((m) => m.result === 'W').length;
+    last30WinRate = Math.round((wins30 / last30Matches) * 100);
   }
 
   const { formStatus, recentKd, recentAdr } = evaluatePlayerForm(recentMatches, overallKd, overallAdr);
@@ -189,6 +222,12 @@ export function parsePlayerPayload(
     overallKd,
     overallHsPercent,
     overallAdr,
+    last30Kd,
+    last30Adr,
+    last30AdrMatches,
+    last30HsPercent,
+    last30WinRate,
+    last30Matches,
     currentStreak: {
       type: currentStreakType,
       count: currentStreakCount,
@@ -260,7 +299,7 @@ export class FaceitApiService {
       const [userRes, statsRes, historyRes, csgoStatsRes] = await Promise.allSettled([
         fetch(`https://api.faceit.com/users/v1/users/${playerId}`, { headers: { Accept: 'application/json' } }),
         fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/cs2`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=50`, { headers: { Accept: 'application/json' } }),
+        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=30`, { headers: { Accept: 'application/json' } }),
         fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/csgo`, { headers: { Accept: 'application/json' } }),
       ]);
 

@@ -6,7 +6,7 @@ interface LevelProgressBarProps {
   elo: number;
 }
 
-export const LevelProgressBar: React.FC<LevelProgressBarProps> = ({ elo }) => {
+export const LevelProgressBar = React.memo<LevelProgressBarProps>(({ elo }) => {
   const progress = calculateLevelProgress(elo);
 
   return (
@@ -25,7 +25,7 @@ export const LevelProgressBar: React.FC<LevelProgressBarProps> = ({ elo }) => {
           </div>
         </div>
 
-        <div className="text-right text-[11px] font-mono">
+        <div className="text-right text-xs font-mono">
           {progress.pointsToNext !== null ? (
             <span className="text-emerald-400 font-bold">
               +{progress.pointsToNext} ELO to Lvl {progress.nextLevel}
@@ -58,4 +58,5 @@ export const LevelProgressBar: React.FC<LevelProgressBarProps> = ({ elo }) => {
       </div>
     </div>
   );
-};
+});
+LevelProgressBar.displayName = "LevelProgressBar";

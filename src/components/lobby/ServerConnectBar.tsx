@@ -8,7 +8,7 @@ interface ServerConnectBarProps {
 
 const READY_STATUSES = ['READY', 'CONFIGURING'];
 
-export const ServerConnectBar: React.FC<ServerConnectBarProps> = ({ serverIp, status }) => {
+export const ServerConnectBar = React.memo<ServerConnectBarProps>(({ serverIp, status }) => {
   const [copiedIp, setCopiedIp] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const isReady = status ? READY_STATUSES.includes(status) : false;
@@ -74,4 +74,5 @@ export const ServerConnectBar: React.FC<ServerConnectBarProps> = ({ serverIp, st
       </div>
     </div>
   );
-};
+});
+ServerConnectBar.displayName = "ServerConnectBar";

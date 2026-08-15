@@ -35,7 +35,7 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
   const vetoEnabled = settings?.enableVetoHelper !== false;
 
   return (
-    <div className="f-insight-scope font-sans antialiased text-white w-full">
+    <div className="font-sans antialiased text-white w-full">
       <LobbySummaryBar
         payload={payload}
         onRefresh={onRefresh}

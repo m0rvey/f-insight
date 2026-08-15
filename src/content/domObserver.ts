@@ -9,10 +9,16 @@ export class DomObserver {
   private lastRunTime = 0;
   private readonly THROTTLE_MS = 60; // 60ms throttle for 60fps smoothness
 
+  // Caching: avoid re-scanning the whole page on every observer tick
+  private cachedTargets: PlayerElementTarget[] | null = null;
+  private cachedMountPoint: HTMLElement | null = null;
+  private targetsDirty = false;
+
   startObserving(onUpdate: () => void) {
     this.stopObserving();
 
     this.observer = new MutationObserver(() => {
+      this.targetsDirty = true;
       const now = performance.now();
       
       if (now - this.lastRunTime >= this.THROTTLE_MS) {
@@ -46,9 +52,23 @@ export class DomObserver {
       this.observer.disconnect();
       this.observer = null;
     }
+    this.cachedTargets = null;
+    this.cachedMountPoint = null;
+    this.targetsDirty = false;
+  }
+
+  /** Returns true when a DOM mutation happened since the last scan (roster may have changed). */
+  consumeTargetsDirty(): boolean {
+    const dirty = this.targetsDirty;
+    this.targetsDirty = false;
+    return dirty;
   }
 
   findMatchHeaderMountPoint(): HTMLElement | null {
+    if (this.cachedMountPoint && this.cachedMountPoint.isConnected) {
+      return this.cachedMountPoint;
+    }
+
     const selectors = [
       '[class*="MatchPage__Container"]',
       '[class*="MatchOverview"]',
@@ -65,14 +85,34 @@ export class DomObserver {
     for (const sel of selectors) {
       const el = document.querySelector(sel);
       if (el && el instanceof HTMLElement) {
+        this.cachedMountPoint = el;
         return el;
       }
     }
 
-    return document.querySelector('main') || document.body;
+    this.cachedMountPoint = document.querySelector('main') || document.body;
+    return this.cachedMountPoint;
   }
 
   findPlayerElements(): PlayerElementTarget[] {
+    // Reuse the previous scan while all cached targets are still in the DOM.
+    // Roster nodes are static once rendered; only a mutation marks the cache dirty.
+    if (this.cachedTargets) {
+      const alive = this.cachedTargets.filter((t) => t.element.isConnected);
+      if (alive.length === this.cachedTargets.length) {
+        this.targetsDirty = false;
+        return this.cachedTargets;
+      }
+      this.cachedTargets = null;
+    }
+
+    const targets = this.scanPlayerElements();
+    this.cachedTargets = targets;
+    this.targetsDirty = false;
+    return targets;
+  }
+
+  private scanPlayerElements(): PlayerElementTarget[] {
     const targets: PlayerElementTarget[] = [];
     const seenNicknames = new Set<string>();
 

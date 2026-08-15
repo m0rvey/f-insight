@@ -18,6 +18,37 @@ import { FaceitPlayerFullStats } from '../types/faceit';
 import { SteamFullData } from '../types/steam';
 import { RiskAnalysisResult } from '../types/risk';
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Runs async work over a list with a limited number of concurrent workers.
+ * A small delay after each item smooths the request burst so we never trip
+ * Cloudflare rate-limits on api.faceit.com (FACEIT's own page requests —
+ * player popovers/profiles — fail with "Action Failed" when the domain is
+ * throttled).
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+  delayMs = 150
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+      if (delayMs > 0) await sleep(delayMs);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 export class BackgroundMessageHandler {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private initialized = false;
@@ -118,9 +149,12 @@ export class BackgroundMessageHandler {
     const steamData: Record<string, SteamFullData> = {};
     const riskAnalysis: Record<string, RiskAnalysisResult> = {};
 
-    // Fetch all players concurrently with cache
-    await Promise.all(
-      allPlayers.map(async (player) => {
+    // Fetch all players with bounded concurrency (3 workers + small delay between
+    // requests) to avoid rate-limiting api.faceit.com with a 20-request burst.
+    await mapWithConcurrency(
+      allPlayers,
+      3,
+      async (player) => {
         const pId = player.player_id;
         if (!pId) return;
 
@@ -167,15 +201,16 @@ export class BackgroundMessageHandler {
 
           // 3. Red Flags Risk Score
           riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
-          
+
           if (sender?.tab?.id) {
-             this.safeSendToTab(sender.tab.id, {
-               type: 'PLAYER_STATS_UPDATE',
-               payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] }
-             });
+            this.safeSendToTab(sender.tab.id, {
+              type: 'PLAYER_STATS_UPDATE',
+              payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] },
+            });
           }
         }
-      })
+      },
+      200
     );
 
     // Calculate Team Elo and Probabilities
@@ -192,8 +227,8 @@ export class BackgroundMessageHandler {
     // Projected Elo (+/-)
     const projectedEloStakes = calculateProjectedElo(f1AvgElo, f2AvgElo);
 
-    const f1Kds = f1Roster.map((p: any) => playersStats[p.player_id]?.overallKd || 1.0);
-    const f2Kds = f2Roster.map((p: any) => playersStats[p.player_id]?.overallKd || 1.0);
+    const f1Kds = f1Roster.map((p: any) => playersStats[p.player_id]?.last30Kd ?? playersStats[p.player_id]?.overallKd ?? 1.0);
+    const f2Kds = f2Roster.map((p: any) => playersStats[p.player_id]?.last30Kd ?? playersStats[p.player_id]?.overallKd ?? 1.0);
     const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a: number, b: number) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
     const f2AvgKd = f2Kds.length > 0 ? parseFloat((f2Kds.reduce((a: number, b: number) => a + b, 0) / f2Kds.length).toFixed(2)) : 1.0;
 
@@ -202,8 +237,8 @@ export class BackgroundMessageHandler {
     const f1AvgHs = f1Hs.length > 0 ? Math.round(f1Hs.reduce((a: number, b: number) => a + b, 0) / f1Hs.length) : 0;
     const f2AvgHs = f2Hs.length > 0 ? Math.round(f2Hs.reduce((a: number, b: number) => a + b, 0) / f2Hs.length) : 0;
 
-    const f1Adrs = f1Roster.map((p: any) => playersStats[p.player_id]?.overallAdr || 75);
-    const f2Adrs = f2Roster.map((p: any) => playersStats[p.player_id]?.overallAdr || 75);
+    const f1Adrs = f1Roster.map((p: any) => playersStats[p.player_id]?.last30Adr ?? playersStats[p.player_id]?.overallAdr ?? 75);
+    const f2Adrs = f2Roster.map((p: any) => playersStats[p.player_id]?.last30Adr ?? playersStats[p.player_id]?.overallAdr ?? 75);
     const f1AvgAdr = f1Adrs.length > 0 ? Math.round(f1Adrs.reduce((a: number, b: number) => a + b, 0) / f1Adrs.length) : 75;
     const f2AvgAdr = f2Adrs.length > 0 ? Math.round(f2Adrs.reduce((a: number, b: number) => a + b, 0) / f2Adrs.length) : 75;
 
