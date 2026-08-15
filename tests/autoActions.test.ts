@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { AutoActionsEngine } from '../src/content/autoActions';
 import { ExtensionSettings } from '../src/types/settings';
