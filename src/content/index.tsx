@@ -29,6 +29,14 @@ class ContentEngine {
   private modalRoot: Root | null = null;
   private floatingRoot: Root | null = null;
 
+  // Render Caching State
+  private lastRenderPayload: LobbyAnalysisPayload | null = null;
+  private lastRenderIsVisible: boolean | null = null;
+  private lastRenderShowVetoMatrix: boolean | null = null;
+  private lastRenderActiveFlyoutId: string | null = null;
+  private lastRenderIsLoading: boolean | null = null;
+  private playerRenderedState = new Map<string, boolean>();
+
   async init() {
     console.log('[f-insight:Content] Initialized content script');
     await this.loadSettings();
@@ -124,13 +132,29 @@ class ContentEngine {
   }
 
   private renderAll() {
-    this.renderMainWidget();
+    const stateChanged = 
+      this.lastRenderPayload !== this.lobbyPayload ||
+      this.lastRenderIsVisible !== this.isVisible ||
+      this.lastRenderShowVetoMatrix !== this.showVetoMatrix ||
+      this.lastRenderActiveFlyoutId !== this.activePlayerFlyoutId ||
+      this.lastRenderIsLoading !== this.isLoading;
+
+    if (stateChanged) {
+      this.playerRenderedState.clear();
+      this.lastRenderPayload = this.lobbyPayload;
+      this.lastRenderIsVisible = this.isVisible;
+      this.lastRenderShowVetoMatrix = this.showVetoMatrix;
+      this.lastRenderActiveFlyoutId = this.activePlayerFlyoutId;
+      this.lastRenderIsLoading = this.isLoading;
+    }
+
+    this.renderMainWidget(stateChanged);
     this.renderPlayerBadges();
-    this.renderModal();
-    this.renderFloatingControls();
+    this.renderModal(stateChanged);
+    this.renderFloatingControls(stateChanged);
   }
 
-  private renderMainWidget() {
+  private renderMainWidget(forceRender: boolean = true) {
     if (!this.currentMatchId || !this.lobbyPayload) return;
 
     const mountPoint = this.domObserver.findMatchHeaderMountPoint();
@@ -143,9 +167,10 @@ class ContentEngine {
       shadow.host.style.cssText = 'all: initial; display: block; width: 100%; max-width: 1200px; margin: 12px auto; box-sizing: border-box; font-family: Inter, system-ui, sans-serif;';
       mountPoint.prepend(shadow.host);
       this.mainRoot = createRoot(shadow.container);
+      forceRender = true;
     }
 
-    if (this.mainRoot) {
+    if (this.mainRoot && forceRender) {
       this.mainRoot.render(
         <React.StrictMode>
           <LobbyWidget
@@ -183,6 +208,7 @@ class ContentEngine {
 
       let host = target.element.querySelector(`#${hostId}`) as HTMLElement;
       let root = this.playerRoots.get(pId);
+      let isNewlyCreated = false;
 
       if (!host) {
         if (root) {
@@ -197,37 +223,43 @@ class ContentEngine {
         root = createRoot(shadow.container);
         this.playerRoots.set(pId, root);
         host = shadow.host;
+        isNewlyCreated = true;
       } else {
         host.style.display = this.isVisible ? 'block' : 'none';
       }
 
       if (root && this.isVisible) {
-        const stats = this.lobbyPayload.playersStats[pId];
-        const steam = this.lobbyPayload.steamData[pId];
-        const risk = this.lobbyPayload.riskAnalysis[pId];
-        const premade = this.lobbyPayload.premadeGroups.find((g) => g.playerIds.includes(pId));
+        // Only render if newly created or global state was reset for this player
+        if (isNewlyCreated || !this.playerRenderedState.get(pId)) {
+          const stats = this.lobbyPayload.playersStats[pId];
+          const steam = this.lobbyPayload.steamData[pId];
+          const risk = this.lobbyPayload.riskAnalysis[pId];
+          const premade = this.lobbyPayload.premadeGroups.find((g) => g.playerIds.includes(pId));
 
-        root.render(
-          <React.StrictMode>
-            <PlayerBadge
-              playerId={pId}
-              stats={stats}
-              steam={steam}
-              risk={risk}
-              premadeGroup={premade}
-              selectedMap={this.lobbyPayload.match.selected_map}
-              onOpenDetails={(id) => {
-                this.activePlayerFlyoutId = id;
-                this.renderModal();
-              }}
-            />
-          </React.StrictMode>
-        );
+          root.render(
+            <React.StrictMode>
+              <PlayerBadge
+                playerId={pId}
+                stats={stats}
+                steam={steam}
+                risk={risk}
+                premadeGroup={premade}
+                selectedMap={this.lobbyPayload.match.selected_map}
+                onOpenDetails={(id) => {
+                  this.activePlayerFlyoutId = id;
+                  this.renderModal(true);
+                }}
+              />
+            </React.StrictMode>
+          );
+          
+          this.playerRenderedState.set(pId, true);
+        }
       }
     }
   }
 
-  private renderModal() {
+  private renderModal(forceRender: boolean = true) {
     const hostId = 'f-insight-modal-host';
     let host = document.getElementById(hostId);
 
@@ -245,13 +277,14 @@ class ContentEngine {
       shadow.host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 999999; display: flex; align-items: center; justify-content: center; pointer-events: auto; font-family: Inter, system-ui, sans-serif;';
       document.body.appendChild(shadow.host);
       this.modalRoot = createRoot(shadow.container);
+      forceRender = true;
     }
 
     const pStats = this.lobbyPayload.playersStats[this.activePlayerFlyoutId];
     const sData = this.lobbyPayload.steamData[this.activePlayerFlyoutId];
     const rData = this.lobbyPayload.riskAnalysis[this.activePlayerFlyoutId];
 
-    if (this.modalRoot && pStats) {
+    if (this.modalRoot && pStats && forceRender) {
       this.modalRoot.render(
         <React.StrictMode>
           <PlayerDetailFlyout
@@ -260,7 +293,7 @@ class ContentEngine {
             risk={rData}
             onClose={() => {
               this.activePlayerFlyoutId = null;
-              this.renderModal();
+              this.renderModal(true);
             }}
           />
         </React.StrictMode>
@@ -268,7 +301,7 @@ class ContentEngine {
     }
   }
 
-  private renderFloatingControls() {
+  private renderFloatingControls(forceRender: boolean = true) {
     const hostId = 'f-insight-floating-host';
     let host = document.getElementById(hostId);
 
@@ -285,6 +318,7 @@ class ContentEngine {
       const shadow = createShadowContainer(hostId);
       document.body.appendChild(shadow.host);
       this.floatingRoot = createRoot(shadow.container);
+      forceRender = true;
     }
 
     const highRiskCount = this.lobbyPayload
@@ -293,7 +327,7 @@ class ContentEngine {
         ).length
       : 0;
 
-    if (this.floatingRoot) {
+    if (this.floatingRoot && forceRender) {
       this.floatingRoot.render(
         <React.StrictMode>
           <QuickControls

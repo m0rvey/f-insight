@@ -25,12 +25,28 @@ export class SteamApiService {
         
         let cs2HoursTotal = 0;
         let cs2HoursLast2Weeks = 0;
-        // Search for CS:GO / CS2 in mostPlayedGames
-        if (xmlText.includes('<gameName><![CDATA[Counter-Strike 2]]></gameName>') || xmlText.includes('<gameName><![CDATA[Counter-Strike: Global Offensive]]></gameName>')) {
-           const match = xmlText.match(/<gameName><!\[CDATA\[Counter-Strike.*?\]\]><\/gameName>\s*<gameLink>.*?<\/gameLink>\s*<gameIcon>.*?<\/gameIcon>\s*<gameLogo>.*?<\/gameLogo>\s*<gameLogoSmall>.*?<\/gameLogoSmall>\s*<hoursPlayed>(.*?)<\/hoursPlayed>/);
-           if (match) {
-             cs2HoursTotal = parseFloat(match[1].replace(',', ''));
-           }
+        
+        // Search for CS2 in mostPlayedGames block
+        const mostPlayedMatch = xmlText.match(/<mostPlayedGames>([\s\S]*?)<\/mostPlayedGames>/);
+        if (mostPlayedMatch) {
+          const games = mostPlayedMatch[1].split('</mostPlayedGame>');
+          for (const game of games) {
+            if (game.includes('Counter-Strike 2') || game.includes('Counter-Strike: Global Offensive')) {
+              // Extract total hours and recent hours
+              const totalHoursMatch = game.match(/<hoursOnRecord>(.*?)<\/hoursOnRecord>/);
+              if (totalHoursMatch) {
+                cs2HoursTotal = parseFloat(totalHoursMatch[1].replace(/,/g, ''));
+              }
+              const recentHoursMatch = game.match(/<hoursPlayed>(.*?)<\/hoursPlayed>/);
+              if (recentHoursMatch) {
+                cs2HoursLast2Weeks = parseFloat(recentHoursMatch[1].replace(/,/g, ''));
+                if (cs2HoursTotal === 0) {
+                  cs2HoursTotal = cs2HoursLast2Weeks; // Fallback if hoursOnRecord is missing
+                }
+              }
+              break;
+            }
+          }
         }
         
         const memberSinceMatch = xmlText.match(/<memberSince>(.*?)<\/memberSince>/);

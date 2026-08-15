@@ -106,7 +106,7 @@ export class FaceitApiService {
       const [userRes, statsRes, historyRes, csgoStatsRes] = await Promise.allSettled([
         fetch(`https://api.faceit.com/users/v1/users/${playerId}`, { headers: { Accept: 'application/json' } }),
         fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/cs2`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=30`, { headers: { Accept: 'application/json' } }),
+        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=50`, { headers: { Accept: 'application/json' } }),
         fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/csgo`, { headers: { Accept: 'application/json' } }),
       ]);
 
