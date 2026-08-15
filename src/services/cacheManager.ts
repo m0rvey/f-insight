@@ -1,0 +1,124 @@
+interface CacheEntry<T> {
+  value: T;
+  cachedAt: number;
+  ttlMs: number;
+}
+
+export const TTL = {
+  MATCH: 3 * 60 * 1000,        // 3 minutes
+  PLAYER_STATS: 15 * 60 * 1000, // 15 minutes
+  STEAM_PROFILE: 24 * 60 * 60 * 1000, // 24 hours
+  SETTINGS: Infinity,
+} as const;
+
+class CacheManager {
+  private memoryCache: Map<string, CacheEntry<unknown>> = new Map();
+
+  private isChromeStorageAvailable(): boolean {
+    return typeof chrome !== 'undefined' && !!chrome.storage?.local;
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    const now = Date.now();
+
+    // 1. Try memory cache first
+    const memItem = this.memoryCache.get(key);
+    if (memItem) {
+      if (now - memItem.cachedAt < memItem.ttlMs) {
+        return memItem.value as T;
+      }
+      this.memoryCache.delete(key);
+    }
+
+    // 2. Try chrome.storage.local
+    if (this.isChromeStorageAvailable()) {
+      try {
+        const result = await chrome.storage.local.get([key]);
+        const entry = result[key] as CacheEntry<T> | undefined;
+        if (entry && entry.cachedAt && entry.ttlMs) {
+          if (now - entry.cachedAt < entry.ttlMs) {
+            // Populate memory cache for faster subsequent reads
+            this.memoryCache.set(key, entry);
+            return entry.value;
+          }
+          // Expired: delete
+          await chrome.storage.local.remove([key]);
+        }
+      } catch (err) {
+        console.warn(`[f-insight:Cache] Failed to read ${key} from storage`, err);
+      }
+    }
+
+    return null;
+  }
+
+  async set<T>(key: string, value: T, ttlMs: number): Promise<void> {
+    const entry: CacheEntry<T> = {
+      value,
+      cachedAt: Date.now(),
+      ttlMs,
+    };
+
+    this.memoryCache.set(key, entry);
+
+    if (this.isChromeStorageAvailable()) {
+      try {
+        await chrome.storage.local.set({ [key]: entry });
+      } catch (err) {
+        console.warn(`[f-insight:Cache] Failed to save ${key} to storage`, err);
+      }
+    }
+  }
+
+  async remove(key: string): Promise<void> {
+    this.memoryCache.delete(key);
+    if (this.isChromeStorageAvailable()) {
+      try {
+        await chrome.storage.local.remove([key]);
+      } catch (err) {
+        console.warn(`[f-insight:Cache] Failed to remove ${key}`, err);
+      }
+    }
+  }
+
+  async clear(): Promise<void> {
+    this.memoryCache.clear();
+    if (this.isChromeStorageAvailable()) {
+      try {
+        // Clear all except settings
+        const all = await chrome.storage.local.get(null);
+        const keysToRemove = Object.keys(all).filter((k) => k !== 'settings');
+        if (keysToRemove.length > 0) {
+          await chrome.storage.local.remove(keysToRemove);
+        }
+      } catch (err) {
+        console.warn('[f-insight:Cache] Failed to clear storage', err);
+      }
+    }
+  }
+
+  async getStats(): Promise<{ totalEntries: number; bytesInUse: number; keys: string[] }> {
+    if (this.isChromeStorageAvailable()) {
+      try {
+        const all = await chrome.storage.local.get(null);
+        const keys = Object.keys(all);
+        const bytes = await chrome.storage.local.getBytesInUse(null);
+        return {
+          totalEntries: keys.length,
+          bytesInUse: bytes,
+          keys,
+        };
+      } catch (err) {
+        console.warn('[f-insight:Cache] Failed to get stats', err);
+      }
+    }
+
+    return {
+      totalEntries: this.memoryCache.size,
+      bytesInUse: 0,
+      keys: Array.from(this.memoryCache.keys()),
+    };
+  }
+}
+
+export const cacheManager = new CacheManager();
