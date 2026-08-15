@@ -168,7 +168,10 @@ export function calculateRiskScore(
   // 5. Steam Profile Analysis
   let isPrivateSteam = true;
 
-  if (steam && !steam.isPrivate && steam.summary) {
+  if (steam?.fetchError) {
+    // Steam data unavailable (network/rate-limit) — skip steam-based analysis
+    isPrivateSteam = false;
+  } else if (steam && !steam.isPrivate && steam.summary) {
     isPrivateSteam = false;
 
     // Steam CS2 Hours vs Elo

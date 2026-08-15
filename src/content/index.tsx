@@ -44,6 +44,14 @@ class ContentEngine {
     console.log('[f-insight:Content] Initialized content script');
     await this.loadSettings();
 
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.settings?.newValue) {
+        this.settings = { ...DEFAULT_SETTINGS, ...changes.settings.newValue };
+        this.playerRenderedState.clear();
+        this.renderAll(true);
+      }
+    });
+
     this.spaWatcher.onUrlChange((_url, matchId) => {
       if (matchId !== this.currentMatchId) {
         this.currentMatchId = matchId;
@@ -71,11 +79,7 @@ class ContentEngine {
       autoActionsEngine.checkAndExecute(
         this.settings,
         this.lobbyPayload?.match?.server_ip,
-        this.lobbyPayload?.prediction ? calculateMapVetoRanking({
-          f1Players: Object.values(this.lobbyPayload.playersStats || {}).slice(0, 5),
-          f2Players: Object.values(this.lobbyPayload.playersStats || {}).slice(5, 10),
-          availableMaps: this.lobbyPayload.match?.voting?.map?.entities?.map((e: any) => e.name || e.guid || '')
-        }) : undefined
+        this.settings.enableVetoHelper ? this.buildVetoRanking() : undefined
       );
 
       if (this.currentMatchId && this.lobbyPayload) {
@@ -83,13 +87,15 @@ class ContentEngine {
       }
     });
 
-    // Periodic safety check (300ms) for instant Auto Ready-Up and QoL automations
+    // Periodic safety check for instant Auto Ready-Up and QoL automations.
+    // Gated on tab visibility to avoid burning CPU in background tabs.
     window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       autoActionsEngine.checkAndExecute(
         this.settings,
         this.lobbyPayload?.match?.server_ip
       );
-    }, 300);
+    }, 800);
 
     this.renderFloatingControls();
 
@@ -112,7 +118,10 @@ class ContentEngine {
       }
     });
     chrome.runtime.onMessage.addListener((msg) => {
-      if (msg.type === 'PLAYER_STATS_UPDATE' && this.lobbyPayload && this.lobbyPayload.isPartial) {
+      if (msg.type === 'PLAYER_STATS_UPDATE') {
+        if (msg.payload?.matchId !== this.currentMatchId) return;
+        if (!this.lobbyPayload || !this.lobbyPayload.isPartial) return;
+
         if (!this.lobbyPayload.playersStats) this.lobbyPayload.playersStats = {};
         if (!this.lobbyPayload.steamData) this.lobbyPayload.steamData = {};
         if (!this.lobbyPayload.riskAnalysis) this.lobbyPayload.riskAnalysis = {};
@@ -126,11 +135,33 @@ class ContentEngine {
         this.renderAll();
       }
       if (msg.type === 'LOBBY_ANALYSIS_COMPLETE') {
+        if (msg.payload?.match?.match_id !== this.currentMatchId) return;
         this.lobbyPayload = msg.payload;
         this.isLoading = false;
         this.renderAll();
         autoActionsEngine.checkAndExecute(this.settings, this.lobbyPayload?.match?.server_ip);
       }
+    });
+  }
+
+  private buildVetoRanking() {
+    const payload = this.lobbyPayload;
+    if (!payload?.match) return undefined;
+
+    const rosterToStats = (roster: any[]) =>
+      roster
+        .map((r) => payload.playersStats?.[r.player_id])
+        .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+    const f1Players = rosterToStats(payload.match.teams?.faction1?.roster || []);
+    const f2Players = rosterToStats(payload.match.teams?.faction2?.roster || []);
+    if (f1Players.length + f2Players.length < 2) return undefined;
+
+    return calculateMapVetoRanking({
+      f1Players,
+      f2Players,
+      availableMaps: (payload.match.voting?.map?.entities || []).map((e: any) => e.name || e.guid || ''),
+      userFaction: this.currentUser?.faction,
     });
   }
 
@@ -177,8 +208,8 @@ class ContentEngine {
     }
   }
 
-  private renderAll() {
-    const stateChanged = 
+  private renderAll(forceRender: boolean = false) {
+    const stateChanged = forceRender ||
       this.lastRenderPayload !== this.lobbyPayload ||
       this.lastRenderIsVisible !== this.isVisible ||
       this.lastRenderShowVetoMatrix !== this.showVetoMatrix ||
@@ -231,11 +262,17 @@ class ContentEngine {
             isLoading={this.isLoading}
             currentUser={this.currentUser || undefined}
             onRefresh={() => this.currentMatchId && this.fetchLobbyData(this.currentMatchId, true)}
+            isVisible={this.isVisible}
+            onToggleVisibility={() => {
+              this.isVisible = !this.isVisible;
+              this.renderAll();
+            }}
             showVetoMatrix={this.showVetoMatrix}
             onToggleVetoMatrix={() => {
               this.showVetoMatrix = !this.showVetoMatrix;
               this.renderAll();
             }}
+            settings={this.settings}
           />
         </React.StrictMode>
       );
@@ -287,8 +324,10 @@ class ContentEngine {
         if (isNewlyCreated || !this.playerRenderedState.get(pId)) {
           const stats = this.lobbyPayload.playersStats?.[pId];
           const steam = this.lobbyPayload.steamData?.[pId];
-          const risk = this.lobbyPayload.riskAnalysis?.[pId];
-          const premade = (this.lobbyPayload.premadeGroups || []).find((g) => g.playerIds.includes(pId));
+          const risk = this.settings.enableRedFlags ? this.lobbyPayload.riskAnalysis?.[pId] : undefined;
+          const premade = this.settings.enablePremadeDetection
+            ? (this.lobbyPayload.premadeGroups || []).find((g) => g.playerIds.includes(pId))
+            : undefined;
           const isUser = this.currentUser?.playerId === pId ||
             (Boolean(this.currentUser?.nickname) && this.currentUser?.nickname?.toLowerCase() === rosterItem.nickname.toLowerCase());
 
@@ -302,6 +341,9 @@ class ContentEngine {
                 premadeGroup={premade}
                 selectedMap={this.lobbyPayload.match.selected_map}
                 isCurrentUser={isUser}
+                showFcr={this.settings.showFcrRating}
+                showForm={this.settings.showFormIndicators}
+                compact={this.settings.compactMode}
                 onOpenDetails={(id) => {
                   this.activePlayerFlyoutId = id;
                   this.renderModal(true);
@@ -318,17 +360,21 @@ class ContentEngine {
 
   private renderModal(forceRender: boolean = true) {
     const hostId = 'f-insight-modal-host';
-    let host = document.getElementById(hostId);
+    const pStats = this.activePlayerFlyoutId
+      ? this.lobbyPayload?.playersStats?.[this.activePlayerFlyoutId]
+      : undefined;
 
-    if (!this.activePlayerFlyoutId || !this.lobbyPayload) {
+    if (!this.activePlayerFlyoutId || !pStats) {
+      const host = document.getElementById(hostId);
       if (host) host.remove();
       if (this.modalRoot) {
         this.modalRoot.unmount();
+        this.modalRoot = null;
       }
-      this.modalRoot = null;
       return;
     }
 
+    let host = document.getElementById(hostId);
     if (!host) {
       const shadow = createShadowContainer(hostId);
       shadow.host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 999999; display: flex; align-items: center; justify-content: center; pointer-events: auto; font-family: Inter, system-ui, sans-serif;';
@@ -337,9 +383,8 @@ class ContentEngine {
       forceRender = true;
     }
 
-    const pStats = this.lobbyPayload.playersStats?.[this.activePlayerFlyoutId];
-    const sData = this.lobbyPayload.steamData?.[this.activePlayerFlyoutId];
-    const rData = this.lobbyPayload.riskAnalysis?.[this.activePlayerFlyoutId];
+    const sData = this.lobbyPayload?.steamData?.[this.activePlayerFlyoutId];
+    const rData = this.lobbyPayload?.riskAnalysis?.[this.activePlayerFlyoutId];
 
     if (this.modalRoot && pStats && forceRender) {
       this.modalRoot.render(
@@ -403,8 +448,8 @@ class ContentEngine {
   }
 
   private cleanup() {
-    this.domObserver.stopObserving();
-    this.spaWatcher.stop();
+    // NOTE: do NOT stop the domObserver or spaWatcher here — they are required
+    // to re-detect and re-render when the user navigates back into a match room.
     this.lobbyPayload = null;
     this.activePlayerFlyoutId = null;
 
@@ -427,8 +472,14 @@ class ContentEngine {
       this.modalRoot = null;
     }
 
+    if (this.floatingRoot) {
+      this.floatingRoot.unmount();
+      this.floatingRoot = null;
+    }
+
     document.getElementById('f-insight-main-host')?.remove();
     document.getElementById('f-insight-modal-host')?.remove();
+    document.getElementById('f-insight-floating-host')?.remove();
     document.querySelectorAll('[id^="f-insight-player-"]').forEach((el) => el.remove());
   }
 }

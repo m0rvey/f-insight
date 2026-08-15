@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { LobbyAnalysisPayload } from '../types/messages';
+import { ExtensionSettings } from '../types/settings';
 import { LobbySummaryBar } from './LobbySummaryBar';
 import { VetoMatrix } from './VetoMatrix';
 
@@ -9,25 +10,26 @@ interface LobbyWidgetProps {
   payload: LobbyAnalysisPayload;
   isLoading: boolean;
   onRefresh: () => void;
-  showVetoMatrix?: boolean;
-  onToggleVetoMatrix?: () => void;
+  isVisible: boolean;
+  onToggleVisibility: () => void;
+  showVetoMatrix: boolean;
+  onToggleVetoMatrix: () => void;
   currentUser?: DetectedCurrentUser;
+  settings?: ExtensionSettings;
 }
 
 export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
   payload,
   isLoading,
   onRefresh,
-  showVetoMatrix: controlledVetoMatrix,
-  onToggleVetoMatrix: controlledToggleVeto,
+  isVisible,
+  onToggleVisibility,
+  showVetoMatrix,
+  onToggleVetoMatrix,
   currentUser,
+  settings,
 }) => {
-  const [isVisible, setIsVisible] = useState(true);
-  const isVoting = payload.match.status === 'VOTING' || !payload.match.selected_map;
-  const [internalShowVetoMatrix, setInternalShowVetoMatrix] = useState(isVoting);
-
-  const showVeto = controlledVetoMatrix !== undefined ? controlledVetoMatrix : internalShowVetoMatrix;
-  const toggleVeto = controlledToggleVeto || (() => setInternalShowVetoMatrix((prev) => !prev));
+  const vetoEnabled = settings?.enableVetoHelper !== false;
 
   return (
     <div className="f-insight-scope font-sans antialiased text-white w-full">
@@ -36,13 +38,14 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
         onRefresh={onRefresh}
         isLoading={isLoading}
         isVisible={isVisible}
-        onToggleVisibility={() => setIsVisible((prev) => !prev)}
-        showVetoMatrix={showVeto}
-        onToggleVetoMatrix={toggleVeto}
+        onToggleVisibility={onToggleVisibility}
+        showVetoMatrix={showVetoMatrix && vetoEnabled}
+        onToggleVetoMatrix={onToggleVetoMatrix}
         currentUser={currentUser}
+        settings={settings}
       />
 
-      {isVisible && showVeto && (
+      {isVisible && showVetoMatrix && vetoEnabled && (
         <VetoMatrix
           match={payload.match}
           playersStats={payload.playersStats || {}}

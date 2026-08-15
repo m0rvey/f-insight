@@ -195,8 +195,19 @@ export function calculateAdvancedMatchPrediction(params: {
   // Stack shift: up to ±8%
   const premadeDelta = Math.max(-0.08, Math.min(0.08, (f1MaxParty - f2MaxParty) * 0.02));
 
+  // High risk / smurf count
+  const f1HighRisk = f1Players.filter((p) => {
+    const lvl = riskAnalysis[p.playerId]?.level;
+    return lvl === 'HIGH' || lvl === 'CRITICAL';
+  }).length;
+  const f2HighRisk = f2Players.filter((p) => {
+    const lvl = riskAnalysis[p.playerId]?.level;
+    return lvl === 'HIGH' || lvl === 'CRITICAL';
+  }).length;
+
   // 5. Final Adjusted Win Chances
-  const rawWinF1 = baseWinProbF1 + mapDelta + momentumDelta + premadeDelta;
+  const riskDelta = Math.max(-0.06, Math.min(0.06, (f1HighRisk - f2HighRisk) * 0.02));
+  const rawWinF1 = baseWinProbF1 + mapDelta + momentumDelta + premadeDelta + riskDelta;
   const clampedWinF1 = Math.max(0.06, Math.min(0.94, rawWinF1));
   const winChanceF1 = Math.round(clampedWinF1 * 100);
   const winChanceF2 = 100 - winChanceF1;
@@ -255,6 +266,14 @@ export function calculateAdvancedMatchPrediction(params: {
     narratives.push(`Team 2 has ${f2MaxParty}-stack coordination`);
   }
 
+  if (Math.abs(riskDelta) >= 0.04 && f1HighRisk + f2HighRisk > 0) {
+    if (f1HighRisk > f2HighRisk) {
+      narratives.push(`Team 1 likely carries flagged accounts (${f1HighRisk} risk flagged)`);
+    } else if (f2HighRisk > f1HighRisk) {
+      narratives.push(`Team 2 likely carries flagged accounts (${f2HighRisk} risk flagged)`);
+    }
+  }
+
   const keyAdvantageText = narratives.length > 0
     ? narratives.join(' • ')
     : 'Evenly matched teams with balanced firepower & map proficiency';
@@ -284,16 +303,6 @@ export function calculateAdvancedMatchPrediction(params: {
   const f1Star = findStar(f1Players, f1Fcr);
   const f2Star = findStar(f2Players, f2Fcr);
 
-  // High risk / smurf count
-  const f1HighRisk = f1Players.filter((p) => {
-    const lvl = riskAnalysis[p.playerId]?.level;
-    return lvl === 'HIGH' || lvl === 'CRITICAL';
-  }).length;
-  const f2HighRisk = f2Players.filter((p) => {
-    const lvl = riskAnalysis[p.playerId]?.level;
-    return lvl === 'HIGH' || lvl === 'CRITICAL';
-  }).length;
-
   return {
     winChanceF1,
     winChanceF2,
@@ -321,6 +330,7 @@ export function calculateAdvancedMatchPrediction(params: {
       smurfRiskDelta: {
         f1HighRiskCount: f1HighRisk,
         f2HighRiskCount: f2HighRisk,
+        impactPercent: Math.round(riskDelta * 100),
       },
     },
     starMatchup: f1Star && f2Star ? { f1Star, f2Star } : undefined,

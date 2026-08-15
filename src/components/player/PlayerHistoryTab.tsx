@@ -27,7 +27,7 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
   const totalDeaths = matches.reduce((acc, m) => acc + (m.deaths || 0), 0);
   const avgKd = totalDeaths > 0 ? parseFloat((totalKills / totalDeaths).toFixed(2)) : 1.0;
   const avgAdr = Math.round(matches.reduce((acc, m) => acc + (m.adr || 75), 0) / totalGames);
-  const avgHs = Math.round(matches.reduce((acc, m) => acc + (m.hsPercent || 45), 0) / totalGames);
+  const avgHs = Math.round(matches.reduce((acc, m) => acc + (m.hsPercent ?? 45), 0) / totalGames);
 
   const netElo = matches.reduce((acc, m) => acc + (m.eloDiff || (m.result === 'W' ? 25 : -25)), 0);
 

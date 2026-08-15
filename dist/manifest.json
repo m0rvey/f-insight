@@ -51,8 +51,7 @@
     {
       "resources": [
         "assets/*",
-        "icons/*",
-        "f-insight.css"
+        "icons/*"
       ],
       "matches": [
         "https://www.faceit.com/*",

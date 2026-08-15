@@ -99,7 +99,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
         <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
           <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
           <div className={`text-xs font-bold mt-0.5 capitalize truncate ${isF1 ? 'text-blue-400' : 'text-orange-400'}`}>
-            {topMap ? topMap.name : 'Mirage'}
+            {topMap ? topMap.name : '—'}
           </div>
         </div>
       </div>

@@ -108,7 +108,11 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-xs text-zinc-200">Steam Account</span>
-                {steam?.isPrivate ? (
+                {steam?.fetchError ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+                    <Lock className="w-3 h-3" /> Unavailable
+                  </span>
+                ) : steam?.isPrivate ? (
                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300">
                     <Lock className="w-3 h-3" /> Hidden account
                   </span>
@@ -132,14 +136,14 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
                   <Clock className="w-3 h-3" /> Hours
                 </div>
                 <div className="text-sm font-bold font-mono text-zinc-100 mt-0.5">
-                  {steamPlaytime?.cs2HoursTotal ? `${steamPlaytime.cs2HoursTotal}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
+                  {steam?.fetchError ? 'N/A' : steamPlaytime?.cs2HoursTotal ? `${steamPlaytime.cs2HoursTotal}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
                 </div>
               </div>
 
               <div className="bg-faceit-dark/70 rounded-lg p-2 border border-faceit-border/50">
                 <div className="text-[10px] text-faceit-muted">2 Weeks</div>
                 <div className="text-sm font-bold font-mono text-zinc-100 mt-0.5">
-                  {steamPlaytime?.cs2HoursLast2Weeks ? `${steamPlaytime.cs2HoursLast2Weeks}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
+                  {steam?.fetchError ? 'N/A' : steamPlaytime?.cs2HoursLast2Weeks ? `${steamPlaytime.cs2HoursLast2Weeks}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
                 </div>
               </div>
 

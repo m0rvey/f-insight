@@ -142,4 +142,36 @@ describe('calculateRiskScore', () => {
     expect(result.isPrivateSteam).toBe(true);
     expect(result.flags.some((f) => f.id === 'private_steam')).toBe(true);
   });
+
+  it('should not flag accounts as private when Steam data failed to fetch', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'p-2',
+      nickname: 'NetworkIssues',
+      avatar: '',
+      country: 'fr',
+      elo: 1500,
+      skillLevel: 6,
+      totalMatches: 300,
+      overallWinRate: 52,
+      overallKd: 1.1,
+      overallHsPercent: 48,
+      overallAdr: 80,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.1,
+      recentAdr: 80,
+    };
+
+    const steam: SteamFullData = {
+      isPrivate: true,
+      fetchError: true,
+      fetchedAt: Date.now(),
+    };
+
+    const result = calculateRiskScore(player, steam);
+    expect(result.isPrivateSteam).toBe(false);
+    expect(result.flags.some((f) => f.category === 'PRIVATE_PROFILE')).toBe(false);
+  });
 });

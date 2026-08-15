@@ -30,5 +30,6 @@ export interface SteamFullData {
   playtime?: SteamCs2Playtime;
   bans?: SteamBanStatus;
   isPrivate: boolean;
+  fetchError?: boolean;
   fetchedAt: number;
 }

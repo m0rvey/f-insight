@@ -1,5 +1,6 @@
 import React from 'react';
 import { LobbyAnalysisPayload } from '../types/messages';
+import { ExtensionSettings } from '../types/settings';
 import { ServerConnectBar } from './lobby/ServerConnectBar';
 import { ProbabilityBar } from './lobby/ProbabilityBar';
 import { TeamCard } from './lobby/TeamCard';
@@ -29,6 +30,7 @@ interface LobbySummaryBarProps {
   showVetoMatrix?: boolean;
   onToggleVetoMatrix?: () => void;
   currentUser?: DetectedCurrentUser;
+  settings?: ExtensionSettings;
 }
 
 export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
@@ -40,10 +42,13 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   showVetoMatrix,
   onToggleVetoMatrix,
   currentUser,
+  settings,
 }) => {
   const { match, teamSummary, riskAnalysis, premadeGroups, playersStats } = payload;
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
+  const compact = settings?.compactMode === true;
+  const vetoEnabled = settings?.enableVetoHelper !== false;
 
   // Use the forecastEngine map ranker for Top Map
   const getPlayer = (r: { player_id?: string; nickname?: string }) => {
@@ -63,7 +68,12 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   
   const votingEntities = match.voting?.map?.entities || [];
   const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
-  const rankedMaps = calculateMapVetoRanking({ f1Players, f2Players, availableMaps });
+  const rankedMaps = vetoEnabled ? calculateMapVetoRanking({
+    f1Players,
+    f2Players,
+    availableMaps,
+    userFaction: currentUser?.faction,
+  }) : [];
   
   // Best maps for each team
   const f1TopMap = [...rankedMaps].sort((a, b) => b.advantageDelta - a.advantageDelta)[0];
@@ -77,7 +87,10 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
   // Compute High Risk Count
   const allRiskResults = Object.values(riskAnalysis || {});
-  const highRiskCount = allRiskResults.filter((r) => r.level === 'HIGH' || r.level === 'CRITICAL').length;
+  const highRiskCount = settings?.enableRedFlags === false
+    ? 0
+    : allRiskResults.filter((r) => r.level === 'HIGH' || r.level === 'CRITICAL').length;
+  const visiblePremadeGroups = settings?.enablePremadeDetection === false ? [] : (premadeGroups || []);
 
   const rawServerIp = match.server_ip;
   const serverIp = rawServerIp && /^[a-zA-Z0-9.\-:]+$/.test(rawServerIp) ? rawServerIp : undefined;
@@ -92,8 +105,9 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
       case 'VOTING':
         return { label: 'Map Veto Phase', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' };
       case 'CONFIGURING':
+        return { label: 'Server Configuring', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' };
       case 'READY':
-        return { label: 'Server Ready', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' };
+        return { label: 'Server Ready', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' };
       default:
         return { label: match.status, color: 'bg-zinc-800 text-zinc-300 border-zinc-700' };
     }
@@ -117,7 +131,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
   return (
     <div className="w-full mb-4 font-sans antialiased text-white selection:bg-faceit-orange selection:text-black">
-      <div className="glass-panel rounded-2xl p-4 sm:p-5 shadow-card border border-white/10 relative overflow-hidden bg-gradient-to-b from-[#18181C]/90 to-[#121214]/95">
+      <div className={`glass-panel rounded-2xl shadow-card border border-white/10 relative overflow-hidden bg-gradient-to-b from-[#18181C]/90 to-[#121214]/95 ${compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}`}>
         {/* Glowing top line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 via-faceit-orange to-amber-400 opacity-90" />
 
@@ -169,14 +183,14 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
               </div>
             )}
 
-            {(premadeGroups || []).length > 0 && (
+            {visiblePremadeGroups.length > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-200 text-xs font-medium shadow-sm">
                 <Users className="w-3.5 h-3.5 text-purple-400" />
-                <span>{(premadeGroups || []).length} Party</span>
+                <span>{visiblePremadeGroups.length} Party</span>
               </div>
             )}
 
-            {onToggleVetoMatrix && (
+            {onToggleVetoMatrix && vetoEnabled && (
               <button
                 onClick={onToggleVetoMatrix}
                 title="Toggle Veto & Map Pool Matrix"
@@ -213,7 +227,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
         {serverIp && <ServerConnectBar serverIp={serverIp} />}
 
         {isVisible && (
-          <div className="mt-4 space-y-3.5">
+          <div className={`${compact ? 'mt-3 space-y-2.5' : 'mt-4 space-y-3.5'}`}>
             {!teamSummary ? (
               <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
                 <span className="flex items-center gap-2">

@@ -20,9 +20,12 @@ import { RiskAnalysisResult } from '../types/risk';
 
 export class BackgroundMessageHandler {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
+  private initialized = false;
 
   async init() {
+    if (this.initialized) return;
     await this.loadSettings();
+    this.initialized = true;
   }
 
   async loadSettings(): Promise<ExtensionSettings> {
@@ -151,9 +154,9 @@ export class BackgroundMessageHandler {
           riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
           
           if (sender?.tab?.id) {
-             chrome.tabs.sendMessage(sender.tab.id, {
+             this.safeSendToTab(sender.tab.id, {
                type: 'PLAYER_STATS_UPDATE',
-               payload: { playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] }
+               payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] }
              });
           }
         }
@@ -252,11 +255,17 @@ export class BackgroundMessageHandler {
 
     await cacheManager.set(cacheKey, out, TTL.MATCH);
     if (sender?.tab?.id) {
-       chrome.tabs.sendMessage(sender.tab.id, {
+       this.safeSendToTab(sender.tab.id, {
          type: 'LOBBY_ANALYSIS_COMPLETE',
          payload: out
        });
     }
+  }
+
+  private safeSendToTab(tabId: number, message: any) {
+    chrome.tabs.sendMessage(tabId, message).catch((err) => {
+      console.debug('[f-insight:Background] Tab unavailable, skipping message:', err?.message || err);
+    });
   }
 
   private async handleFetchPlayerInsight(payload: any): Promise<MessageResponse> {

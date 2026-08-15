@@ -17,6 +17,18 @@ export class AutoActionsEngine {
     serverIp?: string,
     rankedMaps?: MapVetoRankItem[]
   ) {
+    const hasEnabledActions =
+      settings.autoReadyUp ||
+      settings.autoAcceptParty ||
+      settings.autoDismissAfk ||
+      settings.autoContinueQueue ||
+      settings.autoDismissCaptain ||
+      settings.autoHideClientBanner ||
+      settings.autoVetoMaps ||
+      !!serverIp;
+
+    if (!hasEnabledActions) return;
+
     if (settings.autoReadyUp) {
       this.checkAutoReady();
     }

@@ -41,6 +41,7 @@ export interface AdvancedMatchPrediction {
     smurfRiskDelta: {
       f1HighRiskCount: number;
       f2HighRiskCount: number;
+      impactPercent: number;
     };
   };
   starMatchup?: {
