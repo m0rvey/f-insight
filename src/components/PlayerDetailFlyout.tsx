@@ -33,6 +33,11 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const modalRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -51,7 +56,15 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
       }}
       className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm font-sans antialiased text-white animate-fade-in"
     >
-      <div className="glass-panel w-full max-w-2xl max-h-[85vh] rounded-2xl border border-faceit-border/90 shadow-2xl flex flex-col overflow-hidden bg-faceit-dark" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Player details"
+        tabIndex={-1}
+        className="glass-panel w-full max-w-2xl max-h-[85vh] rounded-2xl border border-faceit-border/90 shadow-2xl flex flex-col overflow-hidden bg-faceit-dark outline-none"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Header */}
         <div className="p-5 bg-gradient-to-r from-faceit-card via-zinc-900 to-faceit-card border-b border-faceit-border/80 flex items-start justify-between relative">
           <div className="flex items-center gap-4">
@@ -83,7 +96,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                 {stats.formStatus === 'HOT' && (
                   <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/40 animate-pulse">
                     <Flame className="w-3 h-3 text-orange-400" />
-                    ON FIRE (Form +{Math.round((stats.recentKd / stats.overallKd - 1) * 100)}%)
+                    ON FIRE {stats.overallKd > 0 ? `(Form +${Math.round((stats.recentKd / stats.overallKd - 1) * 100)}%)` : '(Form spike)'}
                   </span>
                 )}
                 {stats.formStatus === 'COLD' && (
@@ -97,7 +110,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                     className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-mono font-bold border ${
                       risk.score >= 70
                         ? 'bg-red-500/25 text-red-300 border-red-500/50 shadow-sm animate-pulse'
-                        : risk.score >= 40
+                        : risk.score >= 45
                         ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
                         : risk.score >= 25
                         ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
@@ -134,6 +147,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                 rel="noreferrer noopener"
                 className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white transition text-xs flex items-center gap-1"
                 title="Open Steam Profile"
+                aria-label="Open Steam profile"
               >
                 <span>Steam</span>
                 <ExternalLink className="w-3 h-3" />
@@ -141,6 +155,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
             )}
             <button
               onClick={onClose}
+              aria-label="Close player details"
               className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition"
             >
               <X className="w-4 h-4" />
@@ -149,7 +164,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-faceit-border/80 bg-zinc-900/60 px-5">
+        <div className="flex border-b border-faceit-border/80 bg-zinc-900/60 px-5 overflow-x-auto whitespace-nowrap">
           <button
             onClick={() => setActiveTab('overview')}
             className={`py-2.5 px-4 text-xs font-medium border-b-2 transition flex items-center gap-1.5 ${
@@ -194,7 +209,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
             <ShieldAlert className="w-3.5 h-3.5" />
             Red Flags Audit
             {risk && risk.score >= 25 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-red-500/30 text-red-300">
+              <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-500/30 text-red-300">
                 {risk.score}%
               </span>
             )}

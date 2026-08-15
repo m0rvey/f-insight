@@ -233,7 +233,7 @@ export class FaceitApiService {
 
       const json = await res.json();
       const payload = json.payload || json;
-      return this.parseMatchPayload(payload);
+      return parseMatchPayload(payload);
     } catch (err) {
       console.error(`[f-insight:FaceitApi] Error fetching match ${matchId}:`, err);
       return null;
@@ -295,15 +295,17 @@ export class FaceitApiService {
       return null;
     }
   }
+}
 
-  private parseMatchPayload(p: any): FaceitMatchDetails {
+export function parseMatchPayload(p: any): FaceitMatchDetails {
     const f1 = p.teams?.faction1 || p.faction1 || {};
     const f2 = p.teams?.faction2 || p.faction2 || {};
 
     const mapPicks = p.voting?.map?.pick || [];
+    // FACEIT accumulates picks in veto order — the map actually played is the LAST pick
     const selectedMap = mapPicks.length > 0
-      ? mapPicks[0]
-      : p.voting?.map?.entities?.find((e: any) => e.status === 'pick')?.name;
+      ? mapPicks[mapPicks.length - 1]
+      : [...(p.voting?.map?.entities || [])].reverse().find((e: any) => e.status === 'pick')?.name;
 
     // Only treat as server_ip if it is a real IP:port or hostname:port
     const rawIp = p.configured_server_ip || p.server_ip;
@@ -350,8 +352,6 @@ export class FaceitApiService {
       selected_map: selectedMap,
       server_ip: serverIp,
     };
-  }
-
 }
 
 export const faceitApi = new FaceitApiService();

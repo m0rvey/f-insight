@@ -85,7 +85,10 @@ export function evaluatePlayerForm(
   const last5 = recentMatches.slice(0, 5);
   const totalKills = last5.reduce((sum, m) => sum + (m.kills || 0), 0);
   const totalDeaths = last5.reduce((sum, m) => sum + (m.deaths || 0), 0);
-  const recentKd = totalDeaths > 0 ? parseFloat((totalKills / totalDeaths).toFixed(2)) : parseFloat(totalKills.toFixed(2));
+  // 0 deaths (or 0/0) is a degenerate sample — fall back to the lifetime baseline
+  const recentKd = totalDeaths > 0
+    ? parseFloat((totalKills / totalDeaths).toFixed(2))
+    : parseFloat((overallKd || 1.0).toFixed(2));
 
   const validAdrs = last5.map((m) => m.adr).filter((a): a is number => a !== undefined && a > 0);
   const recentAdr = validAdrs.length > 0

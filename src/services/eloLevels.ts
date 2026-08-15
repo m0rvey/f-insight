@@ -36,13 +36,12 @@ export interface LevelProgressResult {
  * Calculates accurate Elo level progress, boundaries, and rank up/down deltas.
  */
 export function calculateLevelProgress(
-  rawElo: number,
-  reportedLevel?: number
+  rawElo: number
 ): LevelProgressResult {
   const currentElo = Math.max(1, Math.round(rawElo || 1000));
 
   // Determine actual level based on Elo
-  let level = reportedLevel || 1;
+  let level = 1;
   for (let lvl = 10; lvl >= 1; lvl--) {
     const bracket = CS2_LEVEL_BRACKETS[lvl];
     if (currentElo >= bracket.minElo) {

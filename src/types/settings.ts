@@ -4,7 +4,6 @@ export interface ExtensionSettings {
   enablePremadeDetection: boolean;
   enableFloatingControls: boolean;
   compactMode: boolean;
-  theme: 'dark' | 'midnight';
   // Matchmaking Automation Features
   autoReadyUp: boolean;
   autoAcceptParty: boolean;
@@ -25,7 +24,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   enablePremadeDetection: true,
   enableFloatingControls: true,
   compactMode: false,
-  theme: 'dark',
   // Automation defaults
   autoReadyUp: true,
   autoAcceptParty: true,

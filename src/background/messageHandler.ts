@@ -48,8 +48,6 @@ export class BackgroundMessageHandler {
           return this.handleSaveSettings(message.payload);
         case 'FETCH_LOBBY_INSIGHT':
           return this.handleFetchLobbyInsight(message.payload, _sender);
-        case 'FETCH_PLAYER_INSIGHT':
-          return this.handleFetchPlayerInsight(message.payload);
         case 'GET_CACHE_STATS':
           return this.handleGetCacheStats();
         case 'CLEAR_CACHE':
@@ -97,6 +95,20 @@ export class BackgroundMessageHandler {
   }
 
   private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
+    try {
+      await this.streamLobbyDataInner(matchId, match, forceRefresh, sender);
+    } catch (err: any) {
+      console.error('[f-insight:Stream] Error:', err);
+      if (sender?.tab?.id) {
+        this.safeSendToTab(sender.tab.id, {
+          type: 'LOBBY_ANALYSIS_ERROR',
+          payload: { matchId, error: err?.message || 'Match analysis stream failed' },
+        });
+      }
+    }
+  }
+
+  private async streamLobbyDataInner(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
     const cacheKey = `match_analysis:${matchId}`;
     const f1Roster = match.teams?.faction1?.roster || [];
     const f2Roster = match.teams?.faction2?.roster || [];
@@ -142,7 +154,10 @@ export class BackgroundMessageHandler {
 
             if (!sData) {
               sData = await steamApi.getPlayerFullData(steamId);
-              await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
+              // Never cache error results (rate-limit / network): retry on the next fetch
+              if (sData && !sData.fetchError) {
+                await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
+              }
             }
 
             if (sData) {
@@ -266,44 +281,6 @@ export class BackgroundMessageHandler {
     chrome.tabs.sendMessage(tabId, message).catch((err) => {
       console.debug('[f-insight:Background] Tab unavailable, skipping message:', err?.message || err);
     });
-  }
-
-  private async handleFetchPlayerInsight(payload: any): Promise<MessageResponse> {
-    const { playerId, steamId64, forceRefresh } = payload;
-    const pCacheKey = `player_stats:${playerId}`;
-
-    let pStats = !forceRefresh ? await cacheManager.get<FaceitPlayerFullStats>(pCacheKey) : null;
-    if (!pStats) {
-      pStats = await faceitApi.getPlayerStats(playerId);
-      if (pStats) {
-        await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
-      }
-    }
-
-    if (!pStats) {
-      return { success: false, error: 'Player stats not found' };
-    }
-
-    let sData: SteamFullData | undefined;
-    const targetSteamId = steamId64 || pStats.steamId64;
-    if (targetSteamId) {
-      const sCacheKey = `steam_data:${targetSteamId}`;
-      sData = !forceRefresh ? (await cacheManager.get<SteamFullData>(sCacheKey)) || undefined : undefined;
-      if (!sData) {
-        sData = await steamApi.getPlayerFullData(targetSteamId);
-        await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
-      }
-    }
-
-    const risk = calculateRiskScore(pStats, sData);
-    return {
-      success: true,
-      data: {
-        stats: pStats,
-        steam: sData,
-        risk,
-      },
-    };
   }
 
   private async handleGetCacheStats(): Promise<MessageResponse> {

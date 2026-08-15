@@ -232,7 +232,7 @@ export function calculateRiskScore(
         category: 'BAN_HISTORY',
       });
     }
-  } else {
+  } else if (steam?.isPrivate) {
     isPrivateSteam = true;
     if (totalMatches < 100 && elo >= 1600) {
       const weight = 15;
@@ -255,6 +255,9 @@ export function calculateRiskScore(
         category: 'PRIVATE_PROFILE',
       });
     }
+  } else {
+    // steam === undefined — no Steam ID available, treat as unknown (no privacy assumption)
+    isPrivateSteam = false;
   }
 
   // Normalize score between 0 and 100

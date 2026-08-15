@@ -5,7 +5,8 @@
   "description": "Deep match lobby insights, smurf risk scoring, party/premade detection, auto ready-up, and map veto helper for FACEIT CS2.",
   "permissions": [
     "storage",
-    "alarms"
+    "alarms",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://www.faceit.com/*",

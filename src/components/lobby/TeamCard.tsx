@@ -43,7 +43,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
             <div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-2 ring-blue-500/30" />
             <span className="font-extrabold text-sm text-zinc-100 truncate max-w-[150px]">{teamName}</span>
             {isUserTeam && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
                 YOU
               </span>
             )}
@@ -70,7 +70,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
           <div className="flex items-center gap-2.5">
             <span className="font-extrabold text-sm text-zinc-100 truncate max-w-[150px]">{teamName}</span>
             {isUserTeam && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
                 YOU
               </span>
             )}

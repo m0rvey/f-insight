@@ -4,7 +4,7 @@ import { ExtensionSettings } from '../types/settings';
 import { ServerConnectBar } from './lobby/ServerConnectBar';
 import { ProbabilityBar } from './lobby/ProbabilityBar';
 import { TeamCard } from './lobby/TeamCard';
-import { calculateMapVetoRanking } from '../services/forecastEngine';
+import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { FaceitPlayerFullStats } from '../types/faceit';
 import {
   ShieldAlert,
@@ -31,6 +31,7 @@ interface LobbySummaryBarProps {
   onToggleVetoMatrix?: () => void;
   currentUser?: DetectedCurrentUser;
   settings?: ExtensionSettings;
+  rankedMaps?: MapVetoRankItem[];
 }
 
 export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
@@ -43,12 +44,14 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   onToggleVetoMatrix,
   currentUser,
   settings,
+  rankedMaps: propsRankedMaps,
 }) => {
   const { match, teamSummary, riskAnalysis, premadeGroups, playersStats } = payload;
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
   const compact = settings?.compactMode === true;
   const vetoEnabled = settings?.enableVetoHelper !== false;
+  const isF2Perspective = currentUser?.faction === 'faction2';
 
   // Use the forecastEngine map ranker for Top Map
   const getPlayer = (r: { player_id?: string; nickname?: string }) => {
@@ -68,16 +71,25 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   
   const votingEntities = match.voting?.map?.entities || [];
   const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
-  const rankedMaps = vetoEnabled ? calculateMapVetoRanking({
-    f1Players,
-    f2Players,
-    availableMaps,
-    userFaction: currentUser?.faction,
-  }) : [];
-  
-  // Best maps for each team
-  const f1TopMap = [...rankedMaps].sort((a, b) => b.advantageDelta - a.advantageDelta)[0];
-  const f2TopMap = [...rankedMaps].sort((a, b) => a.advantageDelta - b.advantageDelta)[0];
+
+  // Use the engine-computed ranking when available (computed once per payload state)
+  const rankedMaps = vetoEnabled
+    ? propsRankedMaps ?? calculateMapVetoRanking({
+        f1Players,
+        f2Players,
+        availableMaps,
+        userFaction: currentUser?.faction,
+      })
+    : [];
+
+  // Best maps for each team — advantageDelta is always from the current user's
+  // perspective (f1 when unknown, f2 when the user is on faction2)
+  const f1TopMap = [...rankedMaps].sort((a, b) =>
+    isF2Perspective ? a.advantageDelta - b.advantageDelta : b.advantageDelta - a.advantageDelta
+  )[0];
+  const f2TopMap = [...rankedMaps].sort((a, b) =>
+    isF2Perspective ? b.advantageDelta - a.advantageDelta : a.advantageDelta - b.advantageDelta
+  )[0];
 
   const f1TopMapSummary = f1TopMap ? { name: f1TopMap.mapName, wr: f1TopMap.f1WinRate } : null;
   const f2TopMapSummary = f2TopMap ? { name: f2TopMap.mapName, wr: f2TopMap.f2WinRate } : null;
@@ -126,8 +138,8 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
     return reg;
   };
 
-  const win1 = teamSummary?.faction1?.winChancePercent || 50;
-  const win2 = teamSummary?.faction2?.winChancePercent || 50;
+  const win1 = teamSummary?.faction1?.winChancePercent ?? 50;
+  const win2 = teamSummary?.faction2?.winChancePercent ?? 50;
 
   return (
     <div className="w-full mb-4 font-sans antialiased text-white selection:bg-faceit-orange selection:text-black">
@@ -153,7 +165,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                 {match.selected_map && (
                   <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                     <Sparkles className="w-3 h-3" />
-                    {match.selected_map.replace('de_', '')}
+                    {match.selected_map.replace(/^(cs2_|csgo_|de_)/, '')}
                   </span>
                 )}
               </div>
@@ -167,7 +179,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     <span>•</span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-zinc-400" />
-                      {new Date(match.configured_at > 1e12 ? match.configured_at : match.configured_at * 1000).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                      {new Date(match.configured_at > 1e12 ? match.configured_at : match.configured_at * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                     </span>
                   </>
                 )}
@@ -224,7 +236,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
           </div>
         </div>
 
-        {serverIp && <ServerConnectBar serverIp={serverIp} />}
+        {serverIp && <ServerConnectBar serverIp={serverIp} status={match.status} />}
 
         {isVisible && (
           <div className={`${compact ? 'mt-3 space-y-2.5' : 'mt-4 space-y-3.5'}`}>
@@ -281,11 +293,11 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                         <div className="text-[11px] text-zinc-400 mt-0.5">
                           {selectedMapRankItem.advantageDelta > 0 ? (
                             <span className="text-blue-300 font-semibold">
-                              +{selectedMapRankItem.advantageDelta}% Map Edge for {f1.name}
+                              +{selectedMapRankItem.advantageDelta}% Map Edge for {isF2Perspective ? f2.name : f1.name}
                             </span>
                           ) : selectedMapRankItem.advantageDelta < 0 ? (
                             <span className="text-orange-300 font-semibold">
-                              +{Math.abs(selectedMapRankItem.advantageDelta)}% Map Edge for {f2.name}
+                              +{Math.abs(selectedMapRankItem.advantageDelta)}% Map Edge for {isF2Perspective ? f1.name : f2.name}
                             </span>
                           ) : (
                             <span className="text-zinc-300 font-semibold">

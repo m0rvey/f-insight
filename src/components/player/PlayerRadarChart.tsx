@@ -7,24 +7,24 @@ interface PlayerRadarChartProps {
 
 export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => {
   // Normalize each metric to a 0 - 100 scale for clean pentagon geometry
-  const kdNorm = Math.min(100, Math.max(10, ((stats.overallKd - 0.6) / 1.0) * 100));
-  const adrNorm = Math.min(100, Math.max(10, ((stats.overallAdr - 50) / 60) * 100));
-  const hsNorm = Math.min(100, Math.max(10, ((stats.overallHsPercent - 20) / 50) * 100));
-  const wrNorm = Math.min(100, Math.max(10, ((stats.overallWinRate - 35) / 40) * 100));
+  const kdNorm = Math.min(100, Math.max(5, ((stats.overallKd - 0.6) / 1.0) * 100));
+  const adrNorm = Math.min(100, Math.max(5, ((stats.overallAdr - 50) / 60) * 100));
+  const hsNorm = Math.min(100, Math.max(5, ((stats.overallHsPercent - 20) / 50) * 100));
+  const wrNorm = Math.min(100, Math.max(5, ((stats.overallWinRate - 35) / 40) * 100));
   
   const fcrVal = stats.fcrContributionPercent ?? 20;
   const formBonus = stats.formStatus === 'HOT' ? 15 : stats.formStatus === 'COLD' ? -15 : 0;
-  const impactNorm = Math.min(100, Math.max(10, ((fcrVal - 10) / 20) * 100 + formBonus));
+  const impactNorm = Math.min(100, Math.max(5, ((fcrVal - 10) / 20) * 100 + formBonus));
 
   const axes = [
-    { label: 'Firepower', value: stats.overallKd.toFixed(2), raw: kdNorm, sub: 'K/D' },
-    { label: 'Damage', value: Math.round(stats.overallAdr).toString(), raw: adrNorm, sub: 'ADR' },
-    { label: 'Precision', value: `${Math.round(stats.overallHsPercent)}%`, raw: hsNorm, sub: 'HS%' },
     { label: 'Winrate', value: `${Math.round(stats.overallWinRate)}%`, raw: wrNorm, sub: 'WIN' },
-    { label: 'Impact', value: `${fcrVal}%`, raw: impactNorm, sub: 'FCR' },
+    { label: 'K/D', value: stats.overallKd.toFixed(2), raw: kdNorm, sub: 'K/D' },
+    { label: 'HS%', value: `${Math.round(stats.overallHsPercent)}%`, raw: hsNorm, sub: 'HS%' },
+    { label: 'ADR', value: Math.round(stats.overallAdr).toString(), raw: adrNorm, sub: 'ADR' },
+    { label: 'Kills', value: `${fcrVal}%`, raw: impactNorm, sub: 'FCR' },
   ];
 
-  const size = 220;
+  const size = 240;
   const center = size / 2;
   const maxRadius = 75;
 
@@ -57,7 +57,7 @@ export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => 
         </span>
       </div>
 
-      <div className="relative w-[220px] h-[220px] flex items-center justify-center">
+      <div className="relative w-[240px] h-[240px] flex items-center justify-center">
         <svg width={size} height={size} className="overflow-visible">
           {/* Background Grid Rings */}
           {rings.map((ring, idx) => {
@@ -125,7 +125,7 @@ export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => 
 
         {/* Outer Axis Labels */}
         {axes.map((axis, i) => {
-          const { x, y } = getCoordinates(maxRadius + 22, i);
+          const { x, y } = getCoordinates(maxRadius + 14, i);
           return (
             <div
               key={i}

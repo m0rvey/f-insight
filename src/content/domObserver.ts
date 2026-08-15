@@ -108,19 +108,19 @@ export class DomObserver {
 
       // Extract nickname from href or inner link
       const href = targetContainer.getAttribute('href') || targetContainer.querySelector('a')?.getAttribute('href') || el.getAttribute('href') || '';
-      const match = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([a-zA-Z0-9_\-]+)/i);
+      const match = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([a-zA-Z0-9_.\-]+)/i);
       let nick = match ? match[1] : '';
 
       if (!nick) {
         const testId = targetContainer.getAttribute('data-testid') || el.getAttribute('data-testid') || '';
-        const testIdMatch = testId.match(/roster-player-([a-zA-Z0-9_\-]+)/i);
+        const testIdMatch = testId.match(/roster-player-([a-zA-Z0-9_.\-]+)/i);
         if (testIdMatch) {
           nick = testIdMatch[1];
         } else {
           const nameEl = targetContainer.querySelector('[class*="nickname"], [class*="Nickname"], [class*="name"], h5');
           const text = nameEl?.textContent?.trim() || el.textContent?.trim() || '';
           if (text && text.length < 24 && !text.includes('\n')) {
-            nick = text.split(' ')[0];
+            nick = text;
           }
         }
       }

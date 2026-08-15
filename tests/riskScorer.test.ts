@@ -174,4 +174,30 @@ describe('calculateRiskScore', () => {
     expect(result.isPrivateSteam).toBe(false);
     expect(result.flags.some((f) => f.category === 'PRIVATE_PROFILE')).toBe(false);
   });
+
+  it('should treat missing Steam data as unknown, not as a private profile', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'p-3',
+      nickname: 'NoSteamId',
+      avatar: '',
+      country: 'uk',
+      elo: 1500,
+      skillLevel: 6,
+      totalMatches: 300,
+      overallWinRate: 52,
+      overallKd: 1.1,
+      overallHsPercent: 48,
+      overallAdr: 80,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.1,
+      recentAdr: 80,
+    };
+
+    const result = calculateRiskScore(player, undefined);
+    expect(result.isPrivateSteam).toBe(false);
+    expect(result.flags.some((f) => f.category === 'PRIVATE_PROFILE')).toBe(false);
+  });
 });

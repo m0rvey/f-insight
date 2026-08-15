@@ -22,7 +22,7 @@ export const PopupApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'automation' | 'modules' | 'cache'>('status');
   const [settings, setSettings] = useState<ExtensionSettings>({ ...DEFAULT_SETTINGS });
   const [cacheStats, setCacheStats] = useState<{ totalEntries: number; bytesInUse: number } | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -60,6 +60,7 @@ export const PopupApp: React.FC = () => {
   };
 
   const handleSaveSettings = async (partial?: Partial<ExtensionSettings>) => {
+    const previous = settings;
     const updated = { ...settings, ...(partial || {}) };
     setSettings(updated);
 
@@ -72,10 +73,15 @@ export const PopupApp: React.FC = () => {
 
         if (res?.success) {
           showStatus('Settings saved');
+        } else {
+          setSettings(previous);
+          showStatus('Failed to save settings', 'error');
         }
       }
     } catch (err) {
       console.error('Failed to save settings:', err);
+      setSettings(previous);
+      showStatus('Failed to save settings', 'error');
     }
   };
 
@@ -91,8 +97,8 @@ export const PopupApp: React.FC = () => {
     }
   };
 
-  const showStatus = (msg: string) => {
-    setStatusMessage(msg);
+  const showStatus = (msg: string, type: 'success' | 'error' = 'success') => {
+    setStatusMessage({ type, text: msg });
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
@@ -106,14 +112,18 @@ export const PopupApp: React.FC = () => {
     settings.enableRedFlags,
     settings.enableVetoHelper,
     settings.enablePremadeDetection,
+    settings.enableFloatingControls,
+    settings.compactMode,
     settings.showFcrRating,
     settings.showFormIndicators,
     settings.autoReadyUp,
     settings.autoAcceptParty,
+    settings.autoCopyConnectIp,
     settings.autoDismissAfk,
     settings.autoContinueQueue,
     settings.autoDismissCaptain,
     settings.autoHideClientBanner,
+    settings.autoVetoMaps,
   ].filter(Boolean).length;
 
   const allCoreActive =
@@ -139,7 +149,7 @@ export const PopupApp: React.FC = () => {
           : `${activeCoreParts.slice(0, -1).join(', ')} and ${activeCoreParts[activeCoreParts.length - 1]} are active.`;
 
   return (
-    <div className="w-[370px] min-h-[460px] bg-faceit-dark text-white font-sans flex flex-col selection:bg-faceit-orange selection:text-black">
+    <div className="w-[380px] min-h-[480px] bg-faceit-dark text-white font-sans flex flex-col selection:bg-faceit-orange selection:text-black">
       {/* Header */}
       <div className="p-3.5 bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border-b border-faceit-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -217,9 +227,19 @@ export const PopupApp: React.FC = () => {
       {/* Tab Content */}
       <div className="p-4 flex-1 space-y-3.5 max-h-[380px] overflow-y-auto">
         {statusMessage && (
-          <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-fade-in">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{statusMessage}</span>
+          <div
+            className={`p-2 rounded-lg border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+              statusMessage.type === 'error'
+                ? 'bg-red-500/20 border-red-500/40 text-red-300'
+                : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+            }`}
+          >
+            {statusMessage.type === 'error' ? (
+              <AlertTriangle className="w-4 h-4" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
+            <span>{statusMessage.text}</span>
           </div>
         )}
 
@@ -245,7 +265,7 @@ export const PopupApp: React.FC = () => {
                 <div>
                   <div className="font-bold text-xs text-white">Some Modules Disabled</div>
                   <p className="text-[11px] text-zinc-300 mt-0.5">
-                    Enabled: {enabledCount} / 11 modules
+                    Enabled: {enabledCount} / 15 modules
                   </p>
                 </div>
               </div>

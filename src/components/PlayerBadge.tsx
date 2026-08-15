@@ -82,7 +82,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
       <div className="grid grid-cols-4 gap-1 text-center font-mono">
         {/* K/D */}
         <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[8px] text-zinc-400 font-sans uppercase font-bold">
+          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">
             {mapStat ? 'MAP K/D' : 'K/D'}
           </div>
           <div
@@ -100,7 +100,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
 
         {/* ADR */}
         <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[8px] text-zinc-400 font-sans uppercase font-bold">ADR</div>
+          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">ADR</div>
           <div
             className={`text-xs font-black mt-0.5 ${
               displayAdr >= 85
@@ -116,7 +116,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
 
         {/* HS% */}
         <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[8px] text-zinc-400 font-sans uppercase font-bold">HS%</div>
+          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">HS%</div>
           <div className="text-xs font-bold text-zinc-200 mt-0.5">
             {Math.round(displayHs)}%
           </div>
@@ -124,11 +124,11 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
 
         {/* Win Rate & Matches */}
         <div className="bg-black/40 rounded-lg p-1 border border-white/5 group-hover:border-white/10 transition">
-          <div className="text-[8px] text-zinc-400 font-sans uppercase font-bold">
+          <div className="text-[9px] text-zinc-300 font-sans uppercase font-bold">
             {mapStat ? 'MAP WR' : 'WIN%'}
           </div>
-          <div className="text-xs font-bold text-zinc-200 mt-0.5 truncate">
-            {mapStat ? `${mapStat.winRate}%` : `${stats.overallWinRate.toFixed(0)}%`}
+          <div className="text-[10px] font-bold text-zinc-200 mt-0.5 whitespace-nowrap">
+            {mapStat ? `${mapStat.winRate}%` : stats.overallWinRate === 0 ? '—' : `${stats.overallWinRate.toFixed(0)}%`}
           </div>
         </div>
       </div>
@@ -139,7 +139,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
           {/* Premade Group */}
           {premadeGroup && (
             <span
-              className="px-1.5 py-0.2 rounded font-extrabold uppercase"
+              className="px-1.5 py-0.5 rounded font-extrabold uppercase"
               style={{
                 backgroundColor: `${premadeGroup.color}25`,
                 color: premadeGroup.color,
@@ -152,21 +152,21 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
 
           {/* Current User Indicator */}
           {isCurrentUser && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-cyan-500/25 text-cyan-300 border border-cyan-400/60 font-black shadow-sm tracking-wider">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cyan-500/25 text-cyan-300 border border-cyan-400/60 font-black shadow-sm tracking-wider">
               YOU
             </span>
           )}
 
           {/* Form Status */}
           {showForm && stats.formStatus === 'HOT' && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-glow-orange animate-pulse">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-glow-orange animate-pulse">
               <Flame className="w-2.5 h-2.5 text-orange-400 fill-orange-400" />
               <span>HOT</span>
             </span>
           )}
 
           {showForm && stats.formStatus === 'COLD' && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
               <Snowflake className="w-2.5 h-2.5 text-cyan-300" />
               <span>COLD</span>
             </span>
@@ -175,7 +175,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
           {/* Consecutive Win / Loss Streak */}
           {stats.currentStreak.count >= 2 && (
             <span
-              className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded font-extrabold ${
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-extrabold ${
                 stats.currentStreak.type === 'W'
                   ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40'
                   : 'bg-red-500/25 text-red-300 border border-red-500/40'
@@ -193,7 +193,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
 
           {/* FCR Share */}
           {showFcr && stats.fcrContributionPercent !== undefined && stats.fcrContributionPercent >= 24 && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
               <Zap className="w-2.5 h-2.5 text-purple-400 fill-purple-400" />
               <span>{stats.fcrContributionPercent}%</span>
             </span>
@@ -202,14 +202,14 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
           {/* Smurf Risk Score */}
           {risk ? (
             <span
-              className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded border ${riskBadgeStyle}`}
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border ${riskBadgeStyle}`}
               title={`Smurf Risk Assessment: ${risk.score}% (${risk.level})`}
             >
               <ShieldAlert className="w-2.5 h-2.5" />
               <span>Smurf: {risk.score}%</span>
             </span>
           ) : (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
               <span>Smurf: —</span>
             </span>
           )}
@@ -217,18 +217,18 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
           {/* Steam Hours or Hidden Account */}
           {steam?.fetchError ? (
             <span
-              className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-500 border border-zinc-700"
+              className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700"
               title="Steam profile could not be fetched"
             >
               Steam N/A
             </span>
           ) : steam && !steam.isPrivate && steam.playtime?.cs2HoursTotal ? (
-            <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+            <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
               {steam.playtime.cs2HoursTotal}h
             </span>
           ) : steam?.isPrivate ? (
             <span
-              className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
+              className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
               title="Steam profile is hidden/private"
             >
               Hidden account

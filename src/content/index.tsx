@@ -10,7 +10,7 @@ import { LobbyWidget } from '../components/LobbyWidget';
 import { PlayerBadge } from '../components/PlayerBadge';
 import { PlayerDetailFlyout } from '../components/PlayerDetailFlyout';
 import { QuickControls } from '../components/QuickControls';
-import { calculateMapVetoRanking } from '../services/forecastEngine';
+import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { detectCurrentPlayer, DetectedCurrentUser } from '../services/currentUserDetector';
 import '../styles/tailwind.css';
 
@@ -25,6 +25,8 @@ class ContentEngine {
   private isVisible: boolean = true;
   private showVetoMatrix: boolean = true;
   private activePlayerFlyoutId: string | null = null;
+  private loadTimer: ReturnType<typeof setTimeout> | null = null;
+  private vetoRanking: MapVetoRankItem[] = [];
 
   // React Roots
   private mainRoot: Root | null = null;
@@ -46,7 +48,10 @@ class ContentEngine {
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === 'local' && changes.settings?.newValue) {
-        this.settings = { ...DEFAULT_SETTINGS, ...changes.settings.newValue };
+        const raw = changes.settings.newValue;
+        // Settings are persisted through cacheManager as a { value, cachedAt, ttlMs } wrapper
+        const stored = raw && typeof raw === 'object' && !Array.isArray(raw) && 'value' in raw ? raw.value : raw;
+        this.settings = { ...DEFAULT_SETTINGS, ...stored };
         this.playerRenderedState.clear();
         this.renderAll(true);
       }
@@ -79,7 +84,7 @@ class ContentEngine {
       autoActionsEngine.checkAndExecute(
         this.settings,
         this.lobbyPayload?.match?.server_ip,
-        this.settings.enableVetoHelper ? this.buildVetoRanking() : undefined
+        this.settings.autoVetoMaps ? this.vetoRanking : undefined
       );
 
       if (this.currentMatchId && this.lobbyPayload) {
@@ -88,12 +93,14 @@ class ContentEngine {
     });
 
     // Periodic safety check for instant Auto Ready-Up and QoL automations.
-    // Gated on tab visibility to avoid burning CPU in background tabs.
+    // Gated on tab visibility and match room presence to avoid burning CPU elsewhere.
     window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
+      if (!this.currentMatchId) return;
       autoActionsEngine.checkAndExecute(
         this.settings,
-        this.lobbyPayload?.match?.server_ip
+        this.lobbyPayload?.match?.server_ip,
+        this.settings.autoVetoMaps ? this.vetoRanking : undefined
       );
     }, 800);
 
@@ -138,10 +145,24 @@ class ContentEngine {
         if (msg.payload?.match?.match_id !== this.currentMatchId) return;
         this.lobbyPayload = msg.payload;
         this.isLoading = false;
+        this.clearLoadTimer();
         this.renderAll();
         autoActionsEngine.checkAndExecute(this.settings, this.lobbyPayload?.match?.server_ip);
       }
+      if (msg.type === 'LOBBY_ANALYSIS_ERROR') {
+        if (msg.payload?.matchId !== this.currentMatchId) return;
+        this.isLoading = false;
+        this.clearLoadTimer();
+        this.renderAll();
+      }
     });
+  }
+
+  private clearLoadTimer() {
+    if (this.loadTimer) {
+      clearTimeout(this.loadTimer);
+      this.loadTimer = null;
+    }
   }
 
   private buildVetoRanking() {
@@ -179,8 +200,22 @@ class ContentEngine {
   }
 
   private async fetchLobbyData(matchId: string, forceRefresh = false) {
+    if (matchId !== this.currentMatchId) return;
+
+    // Drop any payload from a previous match so stale data never renders in a new room
+    if (this.lobbyPayload?.match?.match_id !== matchId) {
+      this.lobbyPayload = null;
+    }
+
     this.isLoading = true;
     this.renderMainWidget();
+
+    // Safety net: if the background stream dies silently, never stay stuck in loading
+    this.clearLoadTimer();
+    this.loadTimer = setTimeout(() => {
+      this.isLoading = false;
+      this.renderAll();
+    }, 60000);
 
     try {
       const msg: ExtensionMessage = {
@@ -189,6 +224,8 @@ class ContentEngine {
       };
 
       const res: MessageResponse<LobbyAnalysisPayload> = await chrome.runtime.sendMessage(msg);
+
+      if (matchId !== this.currentMatchId) return;
 
       if (res && res.success && res.data) {
         this.lobbyPayload = res.data;
@@ -201,10 +238,14 @@ class ContentEngine {
         this.isLoading = false;
       }
     } catch (err) {
+      if (matchId !== this.currentMatchId) return;
       console.error('[f-insight:Content] Error sending message to background:', err);
       this.isLoading = false;
     } finally {
-      this.renderAll();
+      if (matchId === this.currentMatchId) {
+        this.clearLoadTimer();
+        this.renderAll();
+      }
     }
   }
 
@@ -224,6 +265,8 @@ class ContentEngine {
     }
 
     if (stateChanged) {
+      // Compute the map veto ranking once per payload state and share it with all consumers
+      this.vetoRanking = this.buildVetoRanking() || [];
       this.playerRenderedState.clear();
       this.lastRenderPayload = this.lobbyPayload;
       this.lastRenderIsVisible = this.isVisible;
@@ -273,6 +316,7 @@ class ContentEngine {
               this.renderAll();
             }}
             settings={this.settings}
+            rankedMaps={this.vetoRanking}
           />
         </React.StrictMode>
       );
@@ -423,10 +467,12 @@ class ContentEngine {
       forceRender = true;
     }
 
-    const highRiskCount = this.lobbyPayload
-      ? Object.values(this.lobbyPayload.riskAnalysis || {}).filter(
-          (r) => r.level === 'HIGH' || r.level === 'CRITICAL'
-        ).length
+    const highRiskCount = this.settings.enableRedFlags
+      ? this.lobbyPayload
+        ? Object.values(this.lobbyPayload.riskAnalysis || {}).filter(
+            (r) => r.level === 'HIGH' || r.level === 'CRITICAL'
+          ).length
+        : 0
       : 0;
 
     if (this.floatingRoot && forceRender) {
@@ -452,6 +498,9 @@ class ContentEngine {
     // to re-detect and re-render when the user navigates back into a match room.
     this.lobbyPayload = null;
     this.activePlayerFlyoutId = null;
+    this.currentUser = null;
+    this.vetoRanking = [];
+    this.clearLoadTimer();
 
     if (this.mainRoot) {
       this.mainRoot.unmount();

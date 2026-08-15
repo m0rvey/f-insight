@@ -17,16 +17,19 @@
     border: 1px solid rgba(255, 255, 255, 0.05);
   }
 
-  .glow-orange-sm {
-    box-shadow: 0 0 10px rgba(255, 85, 0, 0.35);
+  .animate-fade-in {
+    animation: fadeIn 0.25s ease-out;
   }
+}
 
-  .glow-green-sm {
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
-
-  .glow-red-sm {
-    box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

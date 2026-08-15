@@ -3,6 +3,7 @@ import { LobbyAnalysisPayload } from '../types/messages';
 import { ExtensionSettings } from '../types/settings';
 import { LobbySummaryBar } from './LobbySummaryBar';
 import { VetoMatrix } from './VetoMatrix';
+import { MapVetoRankItem } from '../services/forecastEngine';
 
 import { DetectedCurrentUser } from '../services/currentUserDetector';
 
@@ -16,6 +17,7 @@ interface LobbyWidgetProps {
   onToggleVetoMatrix: () => void;
   currentUser?: DetectedCurrentUser;
   settings?: ExtensionSettings;
+  rankedMaps?: MapVetoRankItem[];
 }
 
 export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
@@ -28,6 +30,7 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
   onToggleVetoMatrix,
   currentUser,
   settings,
+  rankedMaps,
 }) => {
   const vetoEnabled = settings?.enableVetoHelper !== false;
 
@@ -43,6 +46,7 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
         onToggleVetoMatrix={onToggleVetoMatrix}
         currentUser={currentUser}
         settings={settings}
+        rankedMaps={rankedMaps}
       />
 
       {isVisible && showVetoMatrix && vetoEnabled && (
@@ -50,6 +54,7 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
           match={payload.match}
           playersStats={payload.playersStats || {}}
           currentUser={currentUser}
+          rankedMaps={rankedMaps}
         />
       )}
     </div>

@@ -20,7 +20,7 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
   return (
     <div className="space-y-4">
       {/* Elo Level Progress Bar */}
-      <LevelProgressBar elo={stats.elo} skillLevel={stats.skillLevel} />
+      <LevelProgressBar elo={stats.elo} />
 
       {/* Quick KPI Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -39,17 +39,21 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
         <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">FCR Impact</div>
           <div className="text-xl font-bold font-mono text-purple-400 mt-1">
-            {stats.fcrContributionPercent !== undefined ? `${stats.fcrContributionPercent}%` : '20%'}
+            {stats.fcrContributionPercent !== undefined ? `${stats.fcrContributionPercent}%` : <span className="text-zinc-500">—</span>}
           </div>
         </div>
         <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">Smurf Risk</div>
-          <div
-            className="text-xl font-bold font-mono mt-1"
-            style={{ color: risk?.color || '#10B981' }}
-          >
-            {risk?.score ?? 0}%
-          </div>
+          {risk ? (
+            <div
+              className="text-xl font-bold font-mono mt-1"
+              style={{ color: risk.color }}
+            >
+              {risk.score}%
+            </div>
+          ) : (
+            <div className="text-xl font-bold font-mono text-zinc-500 mt-1">—</div>
+          )}
         </div>
       </div>
 
@@ -136,26 +140,30 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
                   <Clock className="w-3 h-3" /> Hours
                 </div>
                 <div className="text-sm font-bold font-mono text-zinc-100 mt-0.5">
-                  {steam?.fetchError ? 'N/A' : steamPlaytime?.cs2HoursTotal ? `${steamPlaytime.cs2HoursTotal}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
+                  {steam?.fetchError ? 'N/A' : !steam ? '—' : steamPlaytime?.cs2HoursTotal ? `${steamPlaytime.cs2HoursTotal}h` : (steam.isPrivate ? 'Hidden' : '0h')}
                 </div>
               </div>
 
               <div className="bg-faceit-dark/70 rounded-lg p-2 border border-faceit-border/50">
                 <div className="text-[10px] text-faceit-muted">2 Weeks</div>
                 <div className="text-sm font-bold font-mono text-zinc-100 mt-0.5">
-                  {steam?.fetchError ? 'N/A' : steamPlaytime?.cs2HoursLast2Weeks ? `${steamPlaytime.cs2HoursLast2Weeks}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
+                  {steam?.fetchError ? 'N/A' : !steam ? '—' : steamPlaytime?.cs2HoursLast2Weeks ? `${steamPlaytime.cs2HoursLast2Weeks}h` : (steam.isPrivate ? 'Hidden' : '0h')}
                 </div>
               </div>
 
               <div className="bg-faceit-dark/70 rounded-lg p-2 border border-faceit-border/50">
                 <div className="text-[10px] text-faceit-muted">Bans</div>
-                <div
-                  className={`text-sm font-bold font-mono mt-0.5 ${
-                    steamBans?.vacBanned || steamBans?.numberOfGameBans ? 'text-red-400' : 'text-emerald-400'
-                  }`}
-                >
-                  {steamBans?.vacBanned || (steamBans?.numberOfGameBans ?? 0) > 0 ? 'Banned' : 'Clean'}
-                </div>
+                {steamBans ? (
+                  <div
+                    className={`text-sm font-bold font-mono mt-0.5 ${
+                      steamBans.vacBanned || steamBans.numberOfGameBans ? 'text-red-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {steamBans.vacBanned || (steamBans.numberOfGameBans ?? 0) > 0 ? 'Banned' : 'Clean'}
+                  </div>
+                ) : (
+                  <div className="text-sm font-bold font-mono text-zinc-500 mt-0.5">No data</div>
+                )}
               </div>
             </div>
           </div>

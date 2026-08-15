@@ -83,16 +83,11 @@ export class AutoActionsEngine {
     this.lastClickTime = now;
 
     try {
+      // Native .click() dispatches a full trusted MouseEvent — no need for a
+      // synthetic dispatchEvent, which previously caused double-firing.
       if (typeof (el as HTMLElement).click === 'function') {
         (el as HTMLElement).click();
       }
-      el.dispatchEvent(
-        new MouseEvent('click', {
-          view: window,
-          bubbles: true,
-          cancelable: true,
-        })
-      );
       return true;
     } catch (err) {
       console.warn(`[f-insight:AutoAction] Error clicking for ${actionLabel}:`, err);
@@ -115,10 +110,20 @@ export class AutoActionsEngine {
       const rawText = el.textContent?.trim().replace(/\s+/g, ' ') || '';
       if (!rawText) continue;
 
-      if (READY_REGEX.test(rawText) || READY_SUBSTRING_REGEX.test(rawText)) {
-        if (this.clickElementSafely(el, `Auto-Ready ("${rawText}")`)) {
-          break;
-        }
+      const strongMatch = READY_REGEX.test(rawText);
+      const weakMatch = READY_SUBSTRING_REGEX.test(rawText);
+      if (!strongMatch && !weakMatch) continue;
+
+      if (weakMatch && !strongMatch) {
+        // Substring matches can hit unrelated dialogs — require a match-room context
+        const inMatchRoom = !!el.closest(
+          '[class*="MatchRoom"], [class*="match-room"], [data-testid*="match"], [class*="MatchCheckIn"], [class*="MatchReady"]'
+        );
+        if (!inMatchRoom) continue;
+      }
+
+      if (this.clickElementSafely(el, `Auto-Ready ("${rawText}")`)) {
+        break;
       }
     }
   }

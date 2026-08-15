@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePlayerPayload } from '../src/services/faceitApi';
+import { parsePlayerPayload, parseMatchPayload } from '../src/services/faceitApi';
 
 const PLAYER_ID = 'player-1';
 
@@ -73,5 +73,43 @@ describe('parsePlayerPayload', () => {
     expect(result.recentMatches[0].kills).toBe(20);
     expect(result.recentMatches[0].kd).toBeCloseTo(1.33);
     expect(result.recentMatches[0].map).toBe('mirage');
+  });
+});
+
+describe('parseMatchPayload', () => {
+  it('should pick the LAST map pick as the selected map (veto order accumulates)', () => {
+    const payload = {
+      id: 'match-1',
+      status: 'VOTING',
+      teams: { faction1: { name: 'A', roster: [] }, faction2: { name: 'B', roster: [] } },
+      voting: {
+        map: {
+          pick: ['de_mirage', 'de_inferno'],
+          entities: [{ name: 'de_mirage', status: 'drop' }, { name: 'de_inferno', status: 'pick' }],
+        },
+      },
+    };
+
+    const result = parseMatchPayload(payload);
+    expect(result.selected_map).toBe('de_inferno');
+  });
+
+  it('should fall back to the last entity with status pick', () => {
+    const payload = {
+      id: 'match-2',
+      status: 'VOTING',
+      teams: { faction1: { name: 'A', roster: [] }, faction2: { name: 'B', roster: [] } },
+      voting: {
+        map: {
+          entities: [
+            { name: 'de_nuke', status: 'pick' },
+            { name: 'de_ancient', status: 'pick' },
+          ],
+        },
+      },
+    };
+
+    const result = parseMatchPayload(payload);
+    expect(result.selected_map).toBe('de_ancient');
   });
 });

@@ -115,7 +115,6 @@ export interface FaceitPlayerFullStats {
   recentMatches: PlayerRecentMatch[];
   mapStats: Record<string, MapSpecificStats>;
   registrationDate?: string;
-  membershipType?: string;
   formStatus: PlayerFormStatus;
   recentKd: number; // Avg KD over last 5 matches
   recentAdr: number; // Avg ADR over last 5 matches
