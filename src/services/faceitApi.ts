@@ -29,10 +29,11 @@ export class FaceitApiService {
 
   async getPlayerStats(playerId: string, fallbackNickname?: string): Promise<FaceitPlayerFullStats | null> {
     try {
-      const [userRes, statsRes, historyRes] = await Promise.allSettled([
+      const [userRes, statsRes, historyRes, csgoStatsRes] = await Promise.allSettled([
         fetch(`https://api.faceit.com/users/v1/users/${playerId}`, { headers: { Accept: 'application/json' } }),
         fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/cs2`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=20`, { headers: { Accept: 'application/json' } }),
+        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=30`, { headers: { Accept: 'application/json' } }),
+        fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/csgo`, { headers: { Accept: 'application/json' } }),
       ]);
 
       let user: any = null;
@@ -47,13 +48,19 @@ export class FaceitApiService {
         stats = sJson.payload || sJson;
       }
 
+      let csgoStats: any = null;
+      if (csgoStatsRes.status === 'fulfilled' && csgoStatsRes.value.ok) {
+        const cJson = await csgoStatsRes.value.json();
+        csgoStats = cJson.payload || cJson;
+      }
+
       let history: any[] = [];
       if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
         const hJson = await historyRes.value.json();
         history = (hJson.payload || hJson) || [];
       }
 
-      return this.parsePlayerPayload(playerId, fallbackNickname, user, stats, history);
+      return this.parsePlayerPayload(playerId, fallbackNickname, user, stats, csgoStats, history);
     } catch (err) {
       console.error(`[f-insight:FaceitApi] Error fetching player ${playerId}:`, err);
       return null;
@@ -76,16 +83,53 @@ export class FaceitApiService {
       '';
 
     const locationNameMap: Record<string, string> = {
-      germany: 'Germany (Frankfurt)',
-      finland: 'Finland (Helsinki)',
-      sweden: 'Sweden (Stockholm)',
-      netherlands: 'Netherlands (Amsterdam)',
-      uk: 'United Kingdom (London)',
-      france: 'France (Paris)',
-      poland: 'Poland (Warsaw)',
+      // Russian & CIS Server Locations
+      moscow: 'Russia (Moscow)',
+      russia: 'Russia (Moscow)',
+      mow: 'Russia (Moscow)',
+      spb: 'Russia (Saint Petersburg)',
+      saint_petersburg: 'Russia (Saint Petersburg)',
+      petersburg: 'Russia (Saint Petersburg)',
+      led: 'Russia (Saint Petersburg)',
+      ekaterinburg: 'Russia (Yekaterinburg)',
+      yekaterinburg: 'Russia (Yekaterinburg)',
+      svx: 'Russia (Yekaterinburg)',
+      novosibirsk: 'Russia (Novosibirsk)',
+      ovb: 'Russia (Novosibirsk)',
+      khabarovsk: 'Russia (Khabarovsk)',
+      khv: 'Russia (Khabarovsk)',
+      vladivostok: 'Russia (Vladivostok)',
+      vvo: 'Russia (Vladivostok)',
       kazakhstan: 'Kazakhstan (Almaty)',
       almaty: 'Kazakhstan (Almaty)',
-      moscow: 'Russia (Moscow)',
+      ala: 'Kazakhstan (Almaty)',
+      astana: 'Kazakhstan (Astana)',
+      tse: 'Kazakhstan (Astana)',
+      minsk: 'Belarus (Minsk)',
+      belarus: 'Belarus (Minsk)',
+      msq: 'Belarus (Minsk)',
+      kyiv: 'Ukraine (Kyiv)',
+      kiev: 'Ukraine (Kyiv)',
+      ukraine: 'Ukraine (Kyiv)',
+      iev: 'Ukraine (Kyiv)',
+      // European Server Locations
+      germany: 'Germany (Frankfurt)',
+      frankfurt: 'Germany (Frankfurt)',
+      finland: 'Finland (Helsinki)',
+      helsinki: 'Finland (Helsinki)',
+      sweden: 'Sweden (Stockholm)',
+      stockholm: 'Sweden (Stockholm)',
+      netherlands: 'Netherlands (Amsterdam)',
+      amsterdam: 'Netherlands (Amsterdam)',
+      uk: 'United Kingdom (London)',
+      london: 'United Kingdom (London)',
+      france: 'France (Paris)',
+      paris: 'France (Paris)',
+      poland: 'Poland (Warsaw)',
+      warsaw: 'Poland (Warsaw)',
+      turkey: 'Turkey (Istanbul)',
+      istanbul: 'Turkey (Istanbul)',
+      // Americas & APAC
       dallas: 'US (Dallas)',
       chicago: 'US (Chicago)',
       denver: 'US (Denver)',
@@ -151,6 +195,7 @@ export class FaceitApiService {
     fallbackNickname: string | undefined,
     user: any,
     stats: any,
+    csgoStats: any,
     history: any[]
   ): FaceitPlayerFullStats {
     const cs2Game = user?.games?.cs2 || user?.games?.csgo || {};
@@ -162,71 +207,126 @@ export class FaceitApiService {
     const country = user?.country || '';
 
     // Lifetime Stats
-    const lifetime = stats?.lifetime || {};
+    const lifetime = stats?.lifetime || csgoStats?.lifetime || {};
     const totalMatches = parseInt(lifetime.m1 || lifetime.Matches || '0', 10);
     const overallWinRate = parseFloat(lifetime.k6 || lifetime['Win Rate %'] || '0');
     const overallKd = parseFloat(lifetime.k5 || lifetime['Average K/D Ratio'] || '1.0');
     const overallHsPercent = parseFloat(lifetime.k8 || lifetime['Average Headshots %'] || '0');
     const overallAdr = parseFloat(lifetime.c3 || lifetime.adr || '78.5');
 
-    // Segments breakdown (Maps)
+    // Segments breakdown (Maps) - Support both direct array and { segments: [...] }
     const mapStats: Record<string, MapSpecificStats> = {};
-    const segments = stats?.segments || [];
-    for (const seg of segments) {
-      const mapLabel = (seg._id?.label || seg.label || '').replace('de_', '').toLowerCase();
-      if (mapLabel) {
-        const mCount = parseInt(seg.m1 || seg.stats?.Matches || '0', 10);
-        const mWinRate = parseFloat(seg.k6 || seg.stats?.['Win Rate %'] || '0');
-        const mKd = parseFloat(seg.k5 || seg.stats?.['Average K/D Ratio'] || '1.0');
-        const mHs = parseFloat(seg.k8 || seg.stats?.['Average Headshots %'] || '0');
-        const mAvgKills = parseFloat(seg.k1 || seg.stats?.['Average Kills'] || '0');
-        const mAdr = parseFloat(seg.c3 || seg.stats?.ADR || '78.0');
-        const mWins = parseInt(seg.m2 || seg.stats?.Wins || '0', 10);
+    const rawSegments = [
+      ...(Array.isArray(stats) ? stats : (stats?.segments || stats?.items || [])),
+      ...(Array.isArray(csgoStats) ? csgoStats : (csgoStats?.segments || csgoStats?.items || [])),
+    ];
 
-        mapStats[mapLabel] = {
-          mapName: mapLabel,
-          matches: mCount,
-          winRate: mWinRate,
-          kd: mKd,
-          hsPercent: mHs,
-          avgKills: mAvgKills,
-          avgAdr: mAdr,
-          wins: mWins,
-          losses: Math.max(0, mCount - mWins),
-        };
+    for (const seg of rawSegments) {
+      const rawId = seg._id?.segmentId || seg._id?.label || seg.label || seg.segmentId || seg.name || '';
+      const mapLabel = rawId.replace(/^cs2_/, '').replace(/^csgo_/, '').replace(/^de_/, '').trim().toLowerCase();
+      if (mapLabel) {
+        const mCount = parseInt(seg.m1 || seg.stats?.Matches || seg.matches || '0', 10);
+        const mWinRate = parseFloat(seg.k6 || seg.stats?.['Win Rate %'] || seg.winRate || '0');
+        const mKd = parseFloat(seg.k5 || seg.stats?.['Average K/D Ratio'] || seg.kd || '1.0');
+        const mHs = parseFloat(seg.k8 || seg.stats?.['Average Headshots %'] || seg.hsPercent || '0');
+        const mAvgKills = parseFloat(seg.k1 || seg.stats?.['Average Kills'] || seg.avgKills || '0');
+        const mAdr = parseFloat(seg.c3 || seg.stats?.ADR || seg.adr || '78.0');
+        const mWins = parseInt(seg.m2 || seg.stats?.Wins || seg.wins || Math.round((mCount * mWinRate) / 100).toString(), 10);
+
+        if (!mapStats[mapLabel] || mCount > mapStats[mapLabel].matches) {
+          mapStats[mapLabel] = {
+            mapName: mapLabel,
+            matches: mCount,
+            winRate: mWinRate,
+            kd: mKd,
+            hsPercent: mHs,
+            avgKills: mAvgKills,
+            avgAdr: mAdr,
+            wins: mWins,
+            losses: Math.max(0, mCount - mWins),
+          };
+        }
       }
     }
 
-    // Recent Match History (last 20 matches)
+    // Recent Match History (last 30 matches)
     const recentMatches: PlayerRecentMatch[] = [];
     let currentStreakCount = 0;
     let currentStreakType: 'W' | 'L' | 'NONE' = 'NONE';
+    let streakActive = true;
+
+    // Map accumulator from match history
+    const historyMapStats: Record<string, { matches: number; wins: number; kills: number; deaths: number; adrSum: number }> = {};
 
     if (Array.isArray(history)) {
       for (let i = 0; i < history.length; i++) {
         const item = history[i];
-        const isWin = item.i10 === '1' || item.result === '1' || item.stats?.Result === '1';
+        const isWin = item.i10 === '1' || item.result === '1' || item.stats?.Result === '1' || item.stats?.Win === '1';
         const res: 'W' | 'L' = isWin ? 'W' : 'L';
 
+        // Consecutive streak calculation (stops when streak breaks)
         if (i === 0) {
           currentStreakType = res;
           currentStreakCount = 1;
-        } else if (currentStreakType !== 'NONE' && res === currentStreakType) {
-          currentStreakCount++;
+        } else if (streakActive) {
+          if (res === currentStreakType) {
+            currentStreakCount++;
+          } else {
+            streakActive = false;
+          }
+        }
+
+        const mapName = (item.i1 || item.stats?.Map || item.map || '').replace(/^cs2_/, '').replace(/^de_/, '').toLowerCase();
+        const kills = parseInt(item.i6 || item.stats?.Kills || item.kills || '0', 10);
+        const deaths = parseInt(item.i8 || item.stats?.Deaths || item.deaths || '0', 10);
+        const adr = parseFloat(item.c3 || item.stats?.ADR || item.adr || '78.0');
+
+        if (mapName) {
+          if (!historyMapStats[mapName]) {
+            historyMapStats[mapName] = { matches: 0, wins: 0, kills: 0, deaths: 0, adrSum: 0 };
+          }
+          historyMapStats[mapName].matches++;
+          if (isWin) historyMapStats[mapName].wins++;
+          historyMapStats[mapName].kills += kills;
+          historyMapStats[mapName].deaths += deaths;
+          historyMapStats[mapName].adrSum += adr;
         }
 
         recentMatches.push({
           matchId: item.matchId || item.i0 || `match-${i}`,
           playedAt: item.date || item.created_at || 0,
-          map: (item.i1 || item.stats?.Map || '').replace('de_', '').toLowerCase(),
+          map: mapName,
           result: res,
           score: item.i18 || item.stats?.Score || '13:0',
-          kills: parseInt(item.i6 || item.stats?.Kills || '0', 10),
-          deaths: parseInt(item.i8 || item.stats?.Deaths || '0', 10),
-          kd: parseFloat(item.c2 || item.stats?.['K/D Ratio'] || '1.0'),
+          kills,
+          deaths,
+          kd: parseFloat(item.c2 || item.stats?.['K/D Ratio'] || (deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2))),
           hsPercent: parseFloat(item.c4 || item.stats?.['Headshots %'] || '0'),
-          adr: parseFloat(item.c3 || item.adr || '78.0'),
+          adr,
         });
+      }
+    }
+
+    // Merge history map stats if segment stats are missing or 0
+    for (const [mName, hStats] of Object.entries(historyMapStats)) {
+      if (!mapStats[mName] || mapStats[mName].matches === 0) {
+        const mCount = hStats.matches;
+        const mWins = hStats.wins;
+        const mWr = mCount > 0 ? Math.round((mWins / mCount) * 100) : 50;
+        const mKd = hStats.deaths > 0 ? parseFloat((hStats.kills / hStats.deaths).toFixed(2)) : 1.0;
+        const mAdr = mCount > 0 ? Math.round(hStats.adrSum / mCount) : 75;
+
+        mapStats[mName] = {
+          mapName: mName,
+          matches: mCount,
+          winRate: mWr,
+          kd: mKd,
+          hsPercent: overallHsPercent,
+          avgKills: mCount > 0 ? parseFloat((hStats.kills / mCount).toFixed(1)) : 15,
+          avgAdr: mAdr,
+          wins: mWins,
+          losses: mCount - mWins,
+        };
       }
     }
 

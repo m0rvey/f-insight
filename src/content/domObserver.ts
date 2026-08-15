@@ -76,9 +76,7 @@ export class DomObserver {
     const targets: PlayerElementTarget[] = [];
     const seenNicknames = new Set<string>();
 
-    const selectors = [
-      'a[href*="/players/"]',
-      'a[href*="/players-modal/"]',
+    const cardSelectors = [
       '[data-testid*="roster-player"]',
       '[class*="RosterPlayer"]',
       '[class*="roster-item"]',
@@ -87,7 +85,13 @@ export class DomObserver {
       '[class*="PlayerContainer"]',
       '[class*="MatchPlayer"]',
       '[class*="Roster__Player"]',
-      'tr[class*="StatsTableRow"]',
+      '[data-testid*="team-member"]',
+    ];
+
+    const selectors = [
+      ...cardSelectors,
+      'a[href*="/players/"]',
+      'a[href*="/players-modal/"]',
     ];
 
     const playerNodes = document.querySelectorAll(selectors.join(', '));
@@ -95,32 +99,33 @@ export class DomObserver {
     playerNodes.forEach((el) => {
       if (!(el instanceof HTMLElement)) return;
 
+      const cardEl = el.closest(cardSelectors.join(', ')) || (el.matches(cardSelectors.join(', ')) ? el : null);
+      const targetContainer = (cardEl instanceof HTMLElement ? cardEl : el);
+
       // Extract nickname from href or inner link
-      const href = el.getAttribute('href') || el.querySelector('a')?.getAttribute('href') || '';
+      const href = targetContainer.getAttribute('href') || targetContainer.querySelector('a')?.getAttribute('href') || el.getAttribute('href') || '';
       const match = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([a-zA-Z0-9_\-]+)/i);
       let nick = match ? match[1] : '';
 
       if (!nick) {
-        // Look inside data-testid or text
-        const testId = el.getAttribute('data-testid') || '';
+        const testId = targetContainer.getAttribute('data-testid') || el.getAttribute('data-testid') || '';
         const testIdMatch = testId.match(/roster-player-([a-zA-Z0-9_\-]+)/i);
         if (testIdMatch) {
           nick = testIdMatch[1];
         } else {
-          const text = el.textContent?.trim() || '';
-          if (text && text.length < 24 && !text.includes(' ') && !text.includes('\n')) {
-            nick = text;
+          const nameEl = targetContainer.querySelector('[class*="nickname"], [class*="Nickname"], [class*="name"], h5');
+          const text = nameEl?.textContent?.trim() || el.textContent?.trim() || '';
+          if (text && text.length < 24 && !text.includes('\n')) {
+            nick = text.split(' ')[0];
           }
         }
       }
 
       if (nick && !seenNicknames.has(nick.toLowerCase())) {
         seenNicknames.add(nick.toLowerCase());
-
-        const nicknameEl = el.querySelector('[class*="nickname"], [class*="Nickname"], [class*="name"], h5, span') || el;
         targets.push({
           nickname: nick,
-          element: (nicknameEl instanceof HTMLElement ? nicknameEl : el),
+          element: targetContainer,
         });
       }
     });

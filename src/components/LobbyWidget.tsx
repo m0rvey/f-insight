@@ -7,16 +7,23 @@ interface LobbyWidgetProps {
   payload: LobbyAnalysisPayload;
   isLoading: boolean;
   onRefresh: () => void;
+  showVetoMatrix?: boolean;
+  onToggleVetoMatrix?: () => void;
 }
 
 export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
   payload,
   isLoading,
   onRefresh,
+  showVetoMatrix: controlledVetoMatrix,
+  onToggleVetoMatrix: controlledToggleVeto,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const isVoting = payload.match.status === 'VOTING' || !payload.match.selected_map;
-  const [showVetoMatrix, setShowVetoMatrix] = useState(isVoting);
+  const [internalShowVetoMatrix, setInternalShowVetoMatrix] = useState(isVoting);
+
+  const showVeto = controlledVetoMatrix !== undefined ? controlledVetoMatrix : internalShowVetoMatrix;
+  const toggleVeto = controlledToggleVeto || (() => setInternalShowVetoMatrix((prev) => !prev));
 
   return (
     <div className="f-insight-scope font-sans antialiased text-white w-full">
@@ -26,11 +33,11 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
         isLoading={isLoading}
         isVisible={isVisible}
         onToggleVisibility={() => setIsVisible((prev) => !prev)}
-        showVetoMatrix={showVetoMatrix}
-        onToggleVetoMatrix={() => setShowVetoMatrix((prev) => !prev)}
+        showVetoMatrix={showVeto}
+        onToggleVetoMatrix={toggleVeto}
       />
 
-      {isVisible && showVetoMatrix && (
+      {isVisible && showVeto && (
         <VetoMatrix
           match={payload.match}
           playersStats={payload.playersStats}

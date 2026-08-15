@@ -20,6 +20,7 @@ class ContentEngine {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private isLoading: boolean = false;
   private isVisible: boolean = true;
+  private showVetoMatrix: boolean = true;
   private activePlayerFlyoutId: string | null = null;
 
   // React Roots
@@ -73,6 +74,11 @@ class ContentEngine {
       if (e.altKey && (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р')) {
         e.preventDefault();
         this.isVisible = !this.isVisible;
+        this.renderAll();
+      }
+      if (e.altKey && (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М')) {
+        e.preventDefault();
+        this.showVetoMatrix = !this.showVetoMatrix;
         this.renderAll();
       }
     });
@@ -146,6 +152,11 @@ class ContentEngine {
             payload={this.lobbyPayload}
             isLoading={this.isLoading}
             onRefresh={() => this.currentMatchId && this.fetchLobbyData(this.currentMatchId, true)}
+            showVetoMatrix={this.showVetoMatrix}
+            onToggleVetoMatrix={() => {
+              this.showVetoMatrix = !this.showVetoMatrix;
+              this.renderAll();
+            }}
           />
         </React.StrictMode>
       );
@@ -175,7 +186,7 @@ class ContentEngine {
 
       if (!host) {
         const shadow = createShadowContainer(hostId);
-        shadow.host.style.cssText = 'all: initial; display: inline-flex; vertical-align: middle; margin-left: 8px; margin-top: 2px; font-family: Inter, system-ui, sans-serif; z-index: 20;';
+        shadow.host.style.cssText = 'all: initial; display: block; width: 100%; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; z-index: 10; margin-top: 6px;';
         target.element.appendChild(shadow.host);
         root = createRoot(shadow.container);
         this.playerRoots.set(pId, root);
@@ -219,6 +230,7 @@ class ContentEngine {
 
     if (!host) {
       const shadow = createShadowContainer(hostId);
+      shadow.host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 999999; display: flex; align-items: center; justify-content: center; pointer-events: auto; font-family: Inter, system-ui, sans-serif;';
       document.body.appendChild(shadow.host);
       this.modalRoot = createRoot(shadow.container);
     }

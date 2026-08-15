@@ -4,6 +4,7 @@ import {
   calculateTeamFcr,
   evaluatePlayerForm,
   calculateAdvancedMatchPrediction,
+  calculateMapVetoRanking,
 } from '../src/services/forecastEngine';
 import { FaceitPlayerFullStats, PlayerRecentMatch } from '../src/types/faceit';
 
@@ -138,6 +139,50 @@ describe('forecastEngine', () => {
       expect(pred.winChanceF1).toBeGreaterThan(55);
       expect(pred.factors.mapAdvantage?.leader).toBe('faction1');
       expect(pred.predictedScore.f1Score).toBe(13);
+    });
+  });
+
+  describe('calculateMapVetoRanking', () => {
+    const createPlayerWithMap = (id: string, mapName: string, matches: number, wins: number, kd: number, adr: number): FaceitPlayerFullStats => ({
+      playerId: id,
+      nickname: `Player_${id}`,
+      avatar: '',
+      country: 'se',
+      elo: 1800,
+      skillLevel: 9,
+      totalMatches: 300,
+      overallWinRate: 58,
+      overallKd: kd,
+      overallHsPercent: 50,
+      overallAdr: adr,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {
+        [mapName]: { mapName, matches, wins, losses: matches - wins, winRate: Math.round((wins / matches) * 100), kd, hsPercent: 50, avgKills: 20, avgAdr: adr },
+      },
+      formStatus: 'STABLE',
+      recentKd: kd,
+      recentAdr: adr,
+    });
+
+    it('should rank team best map as Rank 1 MUST_PICK and worst map as PERMABAN', () => {
+      const f1Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f1_${i}`, 'mirage', 50, 40, 1.4, 90)); // Dominating on Mirage
+      const f2Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f2_${i}`, 'nuke', 50, 40, 1.4, 90)); // Dominating on Nuke
+
+      const rankings = calculateMapVetoRanking({ f1Players, f2Players });
+      expect(rankings).toHaveLength(7);
+
+      const rank1 = rankings[0];
+      expect(rank1.mapName).toBe('mirage');
+      expect(rank1.rank).toBe(1);
+      expect(rank1.recommendation).toBe('MUST_PICK');
+      expect(rank1.advantageDelta).toBeGreaterThan(0);
+
+      const rank7 = rankings[6];
+      expect(rank7.mapName).toBe('nuke');
+      expect(rank7.rank).toBe(7);
+      expect(rank7.recommendation).toBe('PERMABAN');
+      expect(rank7.advantageDelta).toBeLessThan(0);
     });
   });
 });

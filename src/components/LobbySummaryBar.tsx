@@ -37,9 +37,35 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   showVetoMatrix,
   onToggleVetoMatrix,
 }) => {
-  const { match, teamSummary, riskAnalysis, premadeGroups } = payload;
+  const { match, teamSummary, riskAnalysis, premadeGroups, playersStats } = payload;
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
+
+  // Calculate Top Map for each team
+  const calculateTopMap = (roster: any[]) => {
+    const maps = ['mirage', 'inferno', 'nuke', 'ancient', 'anubis', 'dust2', 'vertigo'];
+    let best = { name: 'mirage', wr: 50, matches: 0 };
+    for (const m of maps) {
+      let matches = 0;
+      let wins = 0;
+      for (const r of (roster || [])) {
+        const p = (playersStats && playersStats[r.player_id]) || (playersStats && Object.values(playersStats).find((ps) => ps.nickname?.toLowerCase() === r.nickname?.toLowerCase()));
+        const ms = p?.mapStats?.[m];
+        if (ms) {
+          matches += ms.matches;
+          wins += ms.wins;
+        }
+      }
+      const wr = matches > 0 ? Math.round((wins / matches) * 100) : 50;
+      if (matches >= 2 && wr > best.wr) {
+        best = { name: m, wr, matches };
+      }
+    }
+    return best.matches > 0 ? best : null;
+  };
+
+  const f1TopMap = calculateTopMap(f1.roster);
+  const f2TopMap = calculateTopMap(f2.roster);
 
   const [copiedIp, setCopiedIp] = useState(false);
 
@@ -298,7 +324,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 text-center font-mono">
+                <div className="grid grid-cols-5 gap-2 text-center font-mono">
                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
                     <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg Elo</div>
                     <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction1.avgElo}</div>
@@ -314,6 +340,12 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
                     <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg HS%</div>
                     <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction1.avgHsPercent}%</div>
+                  </div>
+                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
+                    <div className="text-xs font-bold text-blue-400 mt-0.5 capitalize truncate">
+                      {f1TopMap ? `${f1TopMap.name} (${f1TopMap.wr}%)` : 'Mirage'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -345,7 +377,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 text-center font-mono">
+                <div className="grid grid-cols-5 gap-2 text-center font-mono">
                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
                     <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg Elo</div>
                     <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction2.avgElo}</div>
@@ -361,6 +393,12 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
                     <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg HS%</div>
                     <div className="text-sm font-bold text-zinc-100 mt-0.5">{teamSummary.faction2.avgHsPercent}%</div>
+                  </div>
+                  <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+                    <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
+                    <div className="text-xs font-bold text-orange-400 mt-0.5 capitalize truncate">
+                      {f2TopMap ? `${f2TopMap.name} (${f2TopMap.wr}%)` : 'Mirage'}
+                    </div>
                   </div>
                 </div>
               </div>

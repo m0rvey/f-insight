@@ -9,7 +9,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)
 ![Game](https://img.shields.io/badge/CS2-FACEIT%20Ready-ff5500.svg)
 
-**Next-generation open-source browser extension for FACEIT CS2 delivering real-time lobby intelligence, matchmaking automation, and tactical match analysis.**
+**Next-generation open-source browser extension for FACEIT CS2 delivering real-time lobby intelligence, matchmaking automation, multi-factor match predictions, and tactical map veto analysis.**
 
 [Features](#-key-features) • [Installation](#-installation--quick-start) • [Documentation](#-documentation) • [Safety & ToS](#-safety--tos-compliance)
 
@@ -21,7 +21,7 @@
 
 ## 🎯 Overview
 
-`f-insight` brings together real-time match analytics, smurf & red flag detection, matchmaking automation (auto-ready, connect IP copy), projected Elo stakes, and team firepower contribution ratings (FCR) into a single, high-performance, **zero-configuration** extension.
+`f-insight` brings together real-time match room analytics, multi-factor CS2 win prediction & MR12 score simulation, smurf & red flag detection, matchmaking automation (auto-ready, connect IP copy), projected Elo stakes, and team firepower contribution ratings (FCR) into a single, high-performance, **100% zero-configuration** extension.
 
 ---
 
@@ -29,28 +29,34 @@
 
 ### 1. ⚡ Matchmaking Automation & QoL
 - **Auto Ready-Up**: Automatically detects and accepts matches when the queue pops.
-- **Auto-Accept Party Invites**: Automatically accepts invitations from friends.
+- **Auto-Accept Party Invites**: Automatically accepts lobby invitations from friends.
 - **1-Click Connect IP & Quick Copy**: Instantly copies `connect <ip:port>` and provides a 1-click `steam://connect` launch button.
 - **Audio Chimes**: Plays a pleasant audio alert when the match server is configured and ready.
-- **Projected Elo Stakes**: Shows exact points to win or lose (e.g. `+24 / -26 ELO`) for each match.
+- **Projected Elo Stakes**: Shows exact points won or lost (e.g. `+24 / -26 ELO`) for each team.
+- **Live Server Geolocation**: Accurately recognizes Russian (Moscow, SPB, Yekaterinburg, Novosibirsk), CIS (Almaty, Astana, Minsk, Kyiv), and EU servers.
 
-### 2. 🔮 Tactical Analytics & Performance Ratings
+### 2. 🧠 Multi-Factor Prediction & Tactical Analytics
+- **Multi-Factor CS2 Win Predictor**: Integrates Base Elo, Selected Map proficiency ($\pm 12\%$), Team Momentum & Hot/Cold player count ($\pm 10\%$), and Premade party cohesion ($\pm 8\%$).
+- **MR12 Score Line Simulation**: Projects realistic match scores (e.g. `13 : 9` or `13 : 11 (OT Likely)`).
+- **Map Veto & Action Plan**: Bayesian sample-weighted 7-map tactical matrix with **Priority 1: Best Pick** and **Priority 1: Must Ban** recommendations for captains.
+- **Team Top Map**: Displayed in the main comparison bar alongside Avg Elo, Avg K/D, Avg ADR, and Avg HS%.
 - **FCR (Firepower Contribution Rating)**: Calculates each player's firepower and impact share in their team (sums to 100%, $>25\%$ indicates star carry).
-- **Player Form & Momentum**: Analyzes last 5 games vs baseline to highlight:
-  - 🔥 **ON FIRE**: Peak performance ($>+15\%$ above normal K/D and ADR).
-  - 🧊 **COLD / TILT**: Underperforming in recent matches.
-  - ⚖️ **STABLE**: Consistent play.
-- **ADR (Average Damage per Round)**: Displayed directly in lobby rosters and player profiles.
-- **Map Veto Tactical Matrix**: Real-time team winrates, average K/D, and pick/ban recommendations on all 7 Active Duty maps.
 
-### 3. 🚨 Smurf Risk Scorer & Red Flags (0–100%)
+### 3. 🎴 Compact Player Stat Strips
+- **Clean Bottom Stat Strip**: Mounts cleanly below each player card with K/D, ADR, HS%, and Win%.
+- **Consecutive Win/Loss Streaks**: Real-time momentum indicator (e.g. `🔥 4W` or `🧊 3L`).
+- **Player Form & Momentum**: 🔥 `ON FIRE` ($>+15\%$ above baseline) or 🧊 `COLD / TILT`.
+- **1-Click FACEIT Stats Link**: Instant direct access to detailed CS2 statistics.
+
+### 4. 🚨 Smurf Risk Scorer & Red Flags (0–100%)
 - **Smart Weighted Risk Scoring**: Flags low-match high-Elo accounts, abnormal winrates ($>70\%$), and K/D spikes.
 - **Steam Profile Audit**: Detects CS2 hours, account age, and VAC/Game bans with `[Private Steam]` support.
 - **Party / Premade Clustering**: Automatically detects and color-codes queue groups (`Party A`, `Party B`).
 
-### 4. 🎨 Zero-Config & Pure Shadow DOM
-- **100% Zero-Config**: Works out of the box using open FACEIT web endpoints. No API keys required.
-- **Shadow DOM Encapsulation**: Isolated styles ensure zero visual glitches with FACEIT's web app.
+### 5. ⌨️ Global Keyboard Hotkeys
+- `Alt + V` (or `Alt + М`): Instant toggle for Map Veto & Action Plan matrix.
+- `Alt + R` (or `Alt + К`): Instant force refresh of match room statistics.
+- `Alt + H` (or `Alt + Р`): Instant toggle visibility of overlays & HUD.
 
 ---
 
