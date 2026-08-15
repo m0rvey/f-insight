@@ -45,9 +45,9 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   // Use the forecastEngine map ranker for Top Map
   const getPlayer = (r: { player_id?: string; nickname?: string }) => {
     const id = r.player_id || '';
-    if (id && playersStats[id]) return playersStats[id];
+    if (id && playersStats?.[id]) return playersStats[id];
     if (r.nickname) {
-      const found = Object.values(playersStats).find(
+      const found = Object.values(playersStats || {}).find(
         (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
       );
       if (found) return found;
@@ -67,10 +67,9 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   const f1TopMapSummary = f1TopMap ? { name: f1TopMap.mapName, wr: f1TopMap.f1WinRate } : null;
   const f2TopMapSummary = f2TopMap ? { name: f2TopMap.mapName, wr: f2TopMap.f2WinRate } : null;
 
-  // Count high risk players
-  const highRiskCount = Object.values(riskAnalysis).filter(
-    (r) => r.level === 'HIGH' || r.level === 'CRITICAL'
-  ).length;
+  // Compute High Risk Count
+  const allRiskResults = Object.values(riskAnalysis || {});
+  const highRiskCount = allRiskResults.filter((r) => r.level === 'HIGH' || r.level === 'CRITICAL').length;
 
   const rawServerIp = match.server_ip;
   const serverIp = rawServerIp && /^[a-zA-Z0-9.\-:]+$/.test(rawServerIp) ? rawServerIp : undefined;
@@ -105,8 +104,8 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
     return reg;
   };
 
-  const win1 = teamSummary.faction1.winChancePercent;
-  const win2 = teamSummary.faction2.winChancePercent;
+  const win1 = teamSummary?.faction1?.winChancePercent || 50;
+  const win2 = teamSummary?.faction2?.winChancePercent || 50;
 
   return (
     <div className="w-full mb-4 font-sans antialiased text-white selection:bg-faceit-orange selection:text-black">
@@ -122,7 +121,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-extrabold text-sm tracking-wide text-white drop-shadow-sm">f-insight Intelligence</span>
+                <span className="font-extrabold text-sm tracking-wide text-white drop-shadow-sm">F-Insight Extension</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-faceit-orange/20 text-faceit-orange border border-faceit-orange/40">
                   CS2 5v5
                 </span>
@@ -171,10 +170,10 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
               </div>
             )}
 
-            {premadeGroups.length > 0 && (
+            {(premadeGroups || []).length > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-200 text-xs font-medium shadow-sm">
                 <Users className="w-3.5 h-3.5 text-purple-400" />
-                <span>{premadeGroups.length} Party</span>
+                <span>{(premadeGroups || []).length} Party</span>
               </div>
             )}
 
@@ -216,68 +215,79 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
         {isVisible && (
           <div className="mt-4 space-y-3.5">
-            <ProbabilityBar 
-              win1={win1} 
-              win2={win2} 
-              team1Name={f1.name} 
-              team2Name={f2.name} 
-              prediction={payload.prediction} 
-            />
+            {!teamSummary ? (
+              <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-faceit-orange" />
+                  Calculating Match Prediction & Risk Factors...
+                </span>
+              </div>
+            ) : (
+              <>
+                <ProbabilityBar 
+                  win1={win1} 
+                  win2={win2} 
+                  team1Name={f1.name} 
+                  team2Name={f2.name} 
+                  prediction={payload.prediction} 
+                />
 
-            {payload.prediction?.keyAdvantageText && (
-              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs text-zinc-300 shadow-sm flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-faceit-orange flex-shrink-0" />
-                  <span className="text-[11px] text-zinc-300 font-medium">
-                    {payload.prediction.keyAdvantageText}
-                  </span>
-                </div>
-                {payload.prediction.starMatchup && (
-                  <div className="text-[10px] font-mono text-zinc-400">
-                    <span className="text-blue-300 font-bold">{payload.prediction.starMatchup.f1Star.nickname}</span>
-                    <span className="mx-1 text-zinc-600">vs</span>
-                    <span className="text-orange-300 font-bold">{payload.prediction.starMatchup.f2Star.nickname}</span>
+                {payload.prediction?.keyAdvantageText && (
+                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs text-zinc-300 shadow-sm flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-faceit-orange flex-shrink-0" />
+                      <span className="text-[11px] text-zinc-300 font-medium">
+                        {payload.prediction.keyAdvantageText}
+                      </span>
+                    </div>
+                    {payload.prediction.starMatchup && (
+                      <div className="text-[10px] font-mono text-zinc-400">
+                        <span className="text-blue-300 font-bold">{payload.prediction.starMatchup.f1Star.nickname}</span>
+                        <span className="mx-1 text-zinc-600">vs</span>
+                        <span className="text-orange-300 font-bold">{payload.prediction.starMatchup.f2Star.nickname}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-center">
+                  <TeamCard
+                    factionId={1}
+                    teamName={f1.name}
+                    winChance={win1}
+                    projectedWin={teamSummary.faction1.projectedElo?.winGain || 25}
+                    projectedLoss={teamSummary.faction1.projectedElo?.lossLoss || 25}
+                    avgElo={teamSummary.faction1.avgElo}
+                    avgKd={teamSummary.faction1.avgKd}
+                    avgAdr={teamSummary.faction1.avgAdr}
+                    avgHsPercent={teamSummary.faction1.avgHsPercent}
+                    topMap={f1TopMapSummary}
+                  />
+
+                  <div className="md:col-span-1 flex flex-col items-center justify-center text-center">
+                    <div className="text-xs font-black text-zinc-500 uppercase tracking-widest px-2 py-0.5 rounded bg-black/60 border border-white/5">
+                      VS
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-zinc-400 mt-1.5">
+                      Δ {teamSummary.eloDifference}
+                    </div>
+                  </div>
+
+                  <TeamCard
+                    factionId={2}
+                    teamName={f2.name}
+                    winChance={win2}
+                    projectedWin={teamSummary.faction2.projectedElo?.winGain || 25}
+                    projectedLoss={teamSummary.faction2.projectedElo?.lossLoss || 25}
+                    avgElo={teamSummary.faction2.avgElo}
+                    avgKd={teamSummary.faction2.avgKd}
+                    avgAdr={teamSummary.faction2.avgAdr}
+                    avgHsPercent={teamSummary.faction2.avgHsPercent}
+                    topMap={f2TopMapSummary}
+                  />
+                </div>
+              </>
             )}
-
-            <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-center">
-              <TeamCard
-                factionId={1}
-                teamName={f1.name}
-                winChance={win1}
-                projectedWin={teamSummary.faction1.projectedElo?.winGain || 25}
-                projectedLoss={teamSummary.faction1.projectedElo?.lossLoss || 25}
-                avgElo={teamSummary.faction1.avgElo}
-                avgKd={teamSummary.faction1.avgKd}
-                avgAdr={teamSummary.faction1.avgAdr}
-                avgHsPercent={teamSummary.faction1.avgHsPercent}
-                topMap={f1TopMapSummary}
-              />
-
-              <div className="md:col-span-1 flex flex-col items-center justify-center text-center">
-                <div className="text-xs font-black text-zinc-500 uppercase tracking-widest px-2 py-0.5 rounded bg-black/60 border border-white/5">
-                  VS
-                </div>
-                <div className="text-[10px] font-mono font-bold text-zinc-400 mt-1.5">
-                  Δ {teamSummary.eloDifference}
-                </div>
-              </div>
-
-              <TeamCard
-                factionId={2}
-                teamName={f2.name}
-                winChance={win2}
-                projectedWin={teamSummary.faction2.projectedElo?.winGain || 25}
-                projectedLoss={teamSummary.faction2.projectedElo?.lossLoss || 25}
-                avgElo={teamSummary.faction2.avgElo}
-                avgKd={teamSummary.faction2.avgKd}
-                avgAdr={teamSummary.faction2.avgAdr}
-                avgHsPercent={teamSummary.faction2.avgHsPercent}
-                topMap={f2TopMapSummary}
-              />
-            </div>
           </div>
         )}
       </div>

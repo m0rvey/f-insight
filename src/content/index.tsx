@@ -90,6 +90,27 @@ class ContentEngine {
         this.renderAll();
       }
     });
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg.type === 'PLAYER_STATS_UPDATE' && this.lobbyPayload && this.lobbyPayload.isPartial) {
+        if (!this.lobbyPayload.playersStats) this.lobbyPayload.playersStats = {};
+        if (!this.lobbyPayload.steamData) this.lobbyPayload.steamData = {};
+        if (!this.lobbyPayload.riskAnalysis) this.lobbyPayload.riskAnalysis = {};
+
+        this.lobbyPayload.playersStats[msg.payload.playerId] = msg.payload.stats;
+        if (msg.payload.steam) this.lobbyPayload.steamData[msg.payload.playerId] = msg.payload.steam;
+        if (msg.payload.risk) this.lobbyPayload.riskAnalysis[msg.payload.playerId] = msg.payload.risk;
+
+        // Force a re-render
+        this.lobbyPayload = { ...this.lobbyPayload };
+        this.renderAll();
+      }
+      if (msg.type === 'LOBBY_ANALYSIS_COMPLETE') {
+        this.lobbyPayload = msg.payload;
+        this.isLoading = false;
+        this.renderAll();
+        autoActionsEngine.checkAndExecute(this.settings, this.lobbyPayload?.match?.server_ip);
+      }
+    });
   }
 
   private async loadSettings() {
@@ -119,14 +140,18 @@ class ContentEngine {
 
       if (res && res.success && res.data) {
         this.lobbyPayload = res.data;
-        autoActionsEngine.checkAndExecute(this.settings, this.lobbyPayload.match.server_ip);
+        if (!this.lobbyPayload.isPartial) {
+          this.isLoading = false;
+          autoActionsEngine.checkAndExecute(this.settings, this.lobbyPayload.match.server_ip);
+        }
       } else {
         console.warn('[f-insight:Content] Failed to load lobby data:', res?.error);
+        this.isLoading = false;
       }
     } catch (err) {
       console.error('[f-insight:Content] Error sending message to background:', err);
-    } finally {
       this.isLoading = false;
+    } finally {
       this.renderAll();
     }
   }
@@ -231,10 +256,10 @@ class ContentEngine {
       if (root && this.isVisible) {
         // Only render if newly created or global state was reset for this player
         if (isNewlyCreated || !this.playerRenderedState.get(pId)) {
-          const stats = this.lobbyPayload.playersStats[pId];
-          const steam = this.lobbyPayload.steamData[pId];
-          const risk = this.lobbyPayload.riskAnalysis[pId];
-          const premade = this.lobbyPayload.premadeGroups.find((g) => g.playerIds.includes(pId));
+          const stats = this.lobbyPayload.playersStats?.[pId];
+          const steam = this.lobbyPayload.steamData?.[pId];
+          const risk = this.lobbyPayload.riskAnalysis?.[pId];
+          const premade = (this.lobbyPayload.premadeGroups || []).find((g) => g.playerIds.includes(pId));
 
           root.render(
             <React.StrictMode>
@@ -280,9 +305,9 @@ class ContentEngine {
       forceRender = true;
     }
 
-    const pStats = this.lobbyPayload.playersStats[this.activePlayerFlyoutId];
-    const sData = this.lobbyPayload.steamData[this.activePlayerFlyoutId];
-    const rData = this.lobbyPayload.riskAnalysis[this.activePlayerFlyoutId];
+    const pStats = this.lobbyPayload.playersStats?.[this.activePlayerFlyoutId];
+    const sData = this.lobbyPayload.steamData?.[this.activePlayerFlyoutId];
+    const rData = this.lobbyPayload.riskAnalysis?.[this.activePlayerFlyoutId];
 
     if (this.modalRoot && pStats && forceRender) {
       this.modalRoot.render(
@@ -322,7 +347,7 @@ class ContentEngine {
     }
 
     const highRiskCount = this.lobbyPayload
-      ? Object.values(this.lobbyPayload.riskAnalysis).filter(
+      ? Object.values(this.lobbyPayload.riskAnalysis || {}).filter(
           (r) => r.level === 'HIGH' || r.level === 'CRITICAL'
         ).length
       : 0;

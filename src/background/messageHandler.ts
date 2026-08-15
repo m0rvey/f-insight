@@ -44,7 +44,7 @@ export class BackgroundMessageHandler {
         case 'SAVE_SETTINGS':
           return this.handleSaveSettings(message.payload);
         case 'FETCH_LOBBY_INSIGHT':
-          return this.handleFetchLobbyInsight(message.payload);
+          return this.handleFetchLobbyInsight(message.payload, _sender);
         case 'FETCH_PLAYER_INSIGHT':
           return this.handleFetchPlayerInsight(message.payload);
         case 'GET_CACHE_STATS':
@@ -71,13 +71,13 @@ export class BackgroundMessageHandler {
     return { success: true, data: this.settings };
   }
 
-  private async handleFetchLobbyInsight(payload: any): Promise<MessageResponse> {
+  private async handleFetchLobbyInsight(payload: any, sender?: chrome.runtime.MessageSender): Promise<MessageResponse> {
     const { matchId, forceRefresh } = payload;
     const cacheKey = `match_analysis:${matchId}`;
 
     if (!forceRefresh) {
       const cachedPayload = await cacheManager.get<LobbyAnalysisPayload>(cacheKey);
-      if (cachedPayload) {
+      if (cachedPayload && !cachedPayload.isPartial) {
         return { success: true, data: cachedPayload };
       }
     }
@@ -87,6 +87,14 @@ export class BackgroundMessageHandler {
       return { success: false, error: `Could not fetch match details for ${matchId}` };
     }
 
+    // Start background streaming
+    this.streamLobbyData(matchId, match, forceRefresh, sender).catch(err => console.error('[f-insight:Stream] Error:', err));
+
+    return { success: true, data: { match, isPartial: true } };
+  }
+
+  private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
+    const cacheKey = `match_analysis:${matchId}`;
     const f1Roster = match.teams?.faction1?.roster || [];
     const f2Roster = match.teams?.faction2?.roster || [];
     const allPlayers = [...f1Roster, ...f2Roster];
@@ -141,16 +149,23 @@ export class BackgroundMessageHandler {
 
           // 3. Red Flags Risk Score
           riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
+          
+          if (sender?.tab?.id) {
+             chrome.tabs.sendMessage(sender.tab.id, {
+               type: 'PLAYER_STATS_UPDATE',
+               payload: { playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] }
+             });
+          }
         }
       })
     );
 
     // Calculate Team Elo and Probabilities
-    const f1Elos = f1Roster.map((p) => playersStats[p.player_id]?.elo || p.elo || 1000);
-    const f2Elos = f2Roster.map((p) => playersStats[p.player_id]?.elo || p.elo || 1000);
+    const f1Elos = f1Roster.map((p: any) => playersStats[p.player_id]?.elo || p.elo || 1000);
+    const f2Elos = f2Roster.map((p: any) => playersStats[p.player_id]?.elo || p.elo || 1000);
 
-    const f1TotalElo = f1Elos.reduce((a, b) => a + b, 0);
-    const f2TotalElo = f2Elos.reduce((a, b) => a + b, 0);
+    const f1TotalElo = f1Elos.reduce((a: number, b: number) => a + b, 0);
+    const f2TotalElo = f2Elos.reduce((a: number, b: number) => a + b, 0);
     const f1AvgElo = f1Elos.length > 0 ? Math.round(f1TotalElo / f1Elos.length) : 1000;
     const f2AvgElo = f2Elos.length > 0 ? Math.round(f2TotalElo / f2Elos.length) : 1000;
 
@@ -159,24 +174,24 @@ export class BackgroundMessageHandler {
     // Projected Elo (+/-)
     const projectedEloStakes = calculateProjectedElo(f1AvgElo, f2AvgElo);
 
-    const f1Kds = f1Roster.map((p) => playersStats[p.player_id]?.overallKd || 1.0);
-    const f2Kds = f2Roster.map((p) => playersStats[p.player_id]?.overallKd || 1.0);
-    const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a, b) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
-    const f2AvgKd = f2Kds.length > 0 ? parseFloat((f2Kds.reduce((a, b) => a + b, 0) / f2Kds.length).toFixed(2)) : 1.0;
+    const f1Kds = f1Roster.map((p: any) => playersStats[p.player_id]?.overallKd || 1.0);
+    const f2Kds = f2Roster.map((p: any) => playersStats[p.player_id]?.overallKd || 1.0);
+    const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a: number, b: number) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
+    const f2AvgKd = f2Kds.length > 0 ? parseFloat((f2Kds.reduce((a: number, b: number) => a + b, 0) / f2Kds.length).toFixed(2)) : 1.0;
 
-    const f1Hs = f1Roster.map((p) => playersStats[p.player_id]?.overallHsPercent || 0);
-    const f2Hs = f2Roster.map((p) => playersStats[p.player_id]?.overallHsPercent || 0);
-    const f1AvgHs = f1Hs.length > 0 ? Math.round(f1Hs.reduce((a, b) => a + b, 0) / f1Hs.length) : 0;
-    const f2AvgHs = f2Hs.length > 0 ? Math.round(f2Hs.reduce((a, b) => a + b, 0) / f2Hs.length) : 0;
+    const f1Hs = f1Roster.map((p: any) => playersStats[p.player_id]?.overallHsPercent || 0);
+    const f2Hs = f2Roster.map((p: any) => playersStats[p.player_id]?.overallHsPercent || 0);
+    const f1AvgHs = f1Hs.length > 0 ? Math.round(f1Hs.reduce((a: number, b: number) => a + b, 0) / f1Hs.length) : 0;
+    const f2AvgHs = f2Hs.length > 0 ? Math.round(f2Hs.reduce((a: number, b: number) => a + b, 0) / f2Hs.length) : 0;
 
-    const f1Adrs = f1Roster.map((p) => playersStats[p.player_id]?.overallAdr || 75);
-    const f2Adrs = f2Roster.map((p) => playersStats[p.player_id]?.overallAdr || 75);
-    const f1AvgAdr = f1Adrs.length > 0 ? Math.round(f1Adrs.reduce((a, b) => a + b, 0) / f1Adrs.length) : 75;
-    const f2AvgAdr = f2Adrs.length > 0 ? Math.round(f2Adrs.reduce((a, b) => a + b, 0) / f2Adrs.length) : 75;
+    const f1Adrs = f1Roster.map((p: any) => playersStats[p.player_id]?.overallAdr || 75);
+    const f2Adrs = f2Roster.map((p: any) => playersStats[p.player_id]?.overallAdr || 75);
+    const f1AvgAdr = f1Adrs.length > 0 ? Math.round(f1Adrs.reduce((a: number, b: number) => a + b, 0) / f1Adrs.length) : 75;
+    const f2AvgAdr = f2Adrs.length > 0 ? Math.round(f2Adrs.reduce((a: number, b: number) => a + b, 0) / f2Adrs.length) : 75;
 
     // Calculate FCR team contribution share
-    const f1FullPlayers = f1Roster.map((r) => playersStats[r.player_id]).filter(Boolean);
-    const f2FullPlayers = f2Roster.map((r) => playersStats[r.player_id]).filter(Boolean);
+    const f1FullPlayers = f1Roster.map((r: any) => playersStats[r.player_id]).filter(Boolean);
+    const f2FullPlayers = f2Roster.map((r: any) => playersStats[r.player_id]).filter(Boolean);
 
     const f1FcrMap = calculateTeamFcr(f1FullPlayers);
     const f2FcrMap = calculateTeamFcr(f2FullPlayers);
@@ -232,10 +247,16 @@ export class BackgroundMessageHandler {
         eloDifference: Math.abs(eloDiff),
       },
       prediction,
+      isPartial: false,
     };
 
     await cacheManager.set(cacheKey, out, TTL.MATCH);
-    return { success: true, data: out };
+    if (sender?.tab?.id) {
+       chrome.tabs.sendMessage(sender.tab.id, {
+         type: 'LOBBY_ANALYSIS_COMPLETE',
+         payload: out
+       });
+    }
   }
 
   private async handleFetchPlayerInsight(payload: any): Promise<MessageResponse> {

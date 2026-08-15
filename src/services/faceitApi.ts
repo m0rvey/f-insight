@@ -151,14 +151,17 @@ export class FaceitApiService {
       ? mapPicks[0]
       : p.voting?.map?.entities?.find((e: any) => e.status === 'pick')?.name;
 
-    // Extract raw server location name from voting
+    // Extract raw server location name from voting or match data
     const locationRaw = p.voting?.location?.pick?.[0] ||
       p.voting?.location?.entities?.find((e: any) => e.status === 'pick')?.name ||
+      p.entity_custom_location ||
+      p.summary?.server_location ||
+      p.summary?.location ||
       p.location ||
       '';
 
     const formattedLocation = locationRaw
-      ? LOCATION_NAME_MAP[locationRaw.toLowerCase()] || locationRaw
+      ? LOCATION_NAME_MAP[locationRaw.toLowerCase()] || locationRaw.charAt(0).toUpperCase() + locationRaw.slice(1)
       : undefined;
 
     // Only treat as server_ip if it is a real IP:port or hostname:port

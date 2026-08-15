@@ -16,7 +16,18 @@ interface VetoMatrixProps {
   playersStats: Record<string, FaceitPlayerFullStats>;
 }
 
-export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats }) => {
+export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {} }) => {
+  if (Object.keys(playersStats).length < 2) {
+    return (
+      <div className="w-full mb-4 font-sans text-white animate-pulse">
+        <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-card bg-[#18181C]/90 h-64 flex items-center justify-center flex-col gap-3 text-zinc-500 font-mono text-xs shadow-inner">
+           <Layers className="w-6 h-6 animate-pulse text-purple-400" />
+           <span>Building Map Veto Intelligence...</span>
+        </div>
+      </div>
+    );
+  }
+
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
 
@@ -91,7 +102,7 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats }) =
               </div>
               <div>
                 <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
-                  Priority 1: Best Pick for {f1.name.slice(0, 10)}
+                  Priority 1: Best Pick for Blue
                 </span>
                 <span className="text-sm font-extrabold text-white capitalize font-mono">
                   {bestPick.mapName}
@@ -116,7 +127,7 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats }) =
               </div>
               <div>
                 <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider block">
-                  Priority 1: Must Ban for {f1.name.slice(0, 10)}
+                  Priority 1: Must Ban for Blue
                 </span>
                 <span className="text-sm font-extrabold text-white capitalize font-mono">
                   {bestBan.mapName}
@@ -135,120 +146,98 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats }) =
         </div>
 
         {/* 7-Map Detailed Tactical Matrix */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse font-sans">
-            <thead>
-              <tr className="border-b border-white/10 text-zinc-400 font-semibold text-[11px]">
-                <th className="py-2.5 px-3">Priority</th>
-                <th className="py-2.5 px-3">Map</th>
-                <th className="py-2.5 px-3 text-center text-blue-400 font-bold">{f1.name} (WR% / K/D / ADR)</th>
-                <th className="py-2.5 px-3 text-center text-orange-400 font-bold">{f2.name} (WR% / K/D / ADR)</th>
-                <th className="py-2.5 px-3 text-center">Advantage Index</th>
-                <th className="py-2.5 px-3 text-right">Tactical Recommendation</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 font-mono">
-              {rankedMaps.map((m: MapVetoRankItem) => {
-                const liveStatus = mapStatusMap.get(m.mapName);
-                const isBanned = liveStatus === 'drop';
-                const isSelected = selectedMapClean === m.mapName || liveStatus === 'pick';
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {rankedMaps.map((m: MapVetoRankItem) => {
+            const liveStatus = mapStatusMap.get(m.mapName);
+            const isBanned = liveStatus === 'drop';
+            const isSelected = selectedMapClean === m.mapName || liveStatus === 'pick';
 
-                return (
-                  <tr
-                    key={m.mapName}
-                    className={`transition-all ${
-                      isBanned
-                        ? 'opacity-40 line-through bg-red-950/10'
-                        : isSelected
-                        ? 'bg-faceit-orange/15 border-l-2 border-faceit-orange shadow-inner'
-                        : 'hover:bg-white/[0.03]'
+            return (
+              <div
+                key={m.mapName}
+                className={`relative flex flex-col p-3 rounded-xl border transition-all duration-200 overflow-hidden ${
+                  isBanned
+                    ? 'opacity-50 bg-red-950/10 border-red-900/30 grayscale-[50%]'
+                    : isSelected
+                    ? 'bg-faceit-orange/15 border-faceit-orange shadow-[0_0_15px_rgba(255,85,0,0.15)] scale-[1.02] z-10'
+                    : 'bg-[#1a1a20]/80 border-white/5 hover:border-white/20 hover:bg-[#1a1a20]'
+                }`}
+              >
+                {/* Header: Map Name & Rank */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black ${
+                        m.rank === 1
+                          ? 'bg-emerald-500 text-black shadow-glow-orange'
+                          : m.rank === 7
+                          ? 'bg-red-500/80 text-white'
+                          : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                      }`}
+                    >
+                      #{m.rank}
+                    </span>
+                    <span className={`font-extrabold text-zinc-100 capitalize font-sans ${isBanned ? 'line-through text-zinc-500' : ''}`}>
+                      {m.mapName}
+                    </span>
+                  </div>
+                  {/* Status Badges */}
+                  {isSelected && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-extrabold uppercase bg-faceit-orange text-black flex items-center gap-1 shadow-glow-orange">
+                      <Sparkles className="w-2.5 h-2.5" /> Pick
+                    </span>
+                  )}
+                  {isBanned && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-red-500/20 text-red-400 border border-red-500/40 flex items-center gap-1">
+                      <Ban className="w-2.5 h-2.5" /> Ban
+                    </span>
+                  )}
+                </div>
+
+                {/* Team Stats Comparison */}
+                <div className="grid grid-cols-2 gap-2 mb-2.5 text-center font-mono">
+                  <div className="bg-black/40 rounded-lg p-2 border border-white/5">
+                    <div className="text-[9px] text-blue-400 font-bold mb-0.5 truncate">{f1.name}</div>
+                    <div className="font-bold text-zinc-100 text-xs">{m.f1WinRate}%</div>
+                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f1AvgKd} KD • {m.f1Matches} matches</div>
+                  </div>
+                  <div className="bg-black/40 rounded-lg p-2 border border-white/5">
+                    <div className="text-[9px] text-orange-400 font-bold mb-0.5 truncate">{f2.name}</div>
+                    <div className="font-bold text-zinc-100 text-xs">{m.f2WinRate}%</div>
+                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f2AvgKd} KD • {m.f2Matches} matches</div>
+                  </div>
+                </div>
+
+                {/* Advantage & Recommendation */}
+                <div className="mt-auto flex items-center justify-between pt-2 border-t border-white/5">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${
+                      m.advantageDelta >= 10
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        : m.advantageDelta <= -10
+                        ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-700'
                     }`}
                   >
-                    {/* Rank */}
-                    <td className="py-3 px-3">
-                      <span
-                        className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] font-black ${
-                          m.rank === 1
-                            ? 'bg-emerald-500 text-black shadow-glow-orange'
-                            : m.rank === 7
-                            ? 'bg-red-500/80 text-white'
-                            : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-                        }`}
-                      >
-                        #{m.rank}
-                      </span>
-                    </td>
-
-                    {/* Map Name & Live Badges */}
-                    <td className="py-3 px-3 font-extrabold text-zinc-200 capitalize font-sans">
-                      <div className="flex items-center gap-2">
-                        <span className={isBanned ? 'line-through text-zinc-500' : ''}>{m.mapName}</span>
-                        {isSelected && (
-                          <span className="text-[9px] px-2 py-0.5 rounded-full font-extrabold uppercase bg-faceit-orange text-black flex items-center gap-1 shadow-glow-orange no-underline">
-                            <Sparkles className="w-2.5 h-2.5" /> Selected
-                          </span>
-                        )}
-                        {isBanned && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-red-500/20 text-red-400 border border-red-500/40 no-underline flex items-center gap-1">
-                            <Ban className="w-2.5 h-2.5" /> Banned
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Faction 1 Stats */}
-                    <td className="py-3 px-3 text-center">
-                      <span className="font-bold text-zinc-100">{m.f1WinRate}%</span>
-                      <span className="text-zinc-400 text-[10px] ml-1">({m.f1AvgKd})</span>
-                      <span className="text-zinc-500 text-[9px] block font-sans">
-                        {m.f1Matches} matches • {m.f1AvgAdr} ADR
-                      </span>
-                    </td>
-
-                    {/* Faction 2 Stats */}
-                    <td className="py-3 px-3 text-center">
-                      <span className="font-bold text-zinc-100">{m.f2WinRate}%</span>
-                      <span className="text-zinc-400 text-[10px] ml-1">({m.f2AvgKd})</span>
-                      <span className="text-zinc-500 text-[9px] block font-sans">
-                        {m.f2Matches} matches • {m.f2AvgAdr} ADR
-                      </span>
-                    </td>
-
-                    {/* Advantage Index */}
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                          m.advantageDelta >= 10
-                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                            : m.advantageDelta <= -10
-                            ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
-                            : 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                        }`}
-                      >
-                        {m.advantageDelta > 0
-                          ? `+${m.advantageDelta}% ${f1.name.slice(0, 8)}`
-                          : m.advantageDelta < 0
-                          ? `+${Math.abs(m.advantageDelta)}% ${f2.name.slice(0, 8)}`
-                          : 'Balanced (0%)'}
-                      </span>
-                    </td>
-
-                    {/* Tactical Recommendation */}
-                    <td className="py-3 px-3 text-right font-sans">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${m.badgeColor}`}>
-                        {m.recommendation === 'MUST_PICK' && <Crown className="w-3 h-3 text-emerald-400" />}
-                        {m.recommendation === 'SAFE_PICK' && <ThumbsUp className="w-3 h-3 text-blue-400" />}
-                        {m.recommendation === 'BALANCED' && <Shield className="w-3 h-3 text-zinc-400" />}
-                        {m.recommendation === 'RISK_BAN' && <ThumbsDown className="w-3 h-3 text-amber-400" />}
-                        {m.recommendation === 'PERMABAN' && <Ban className="w-3 h-3 text-red-400" />}
-                        <span>{m.recommendation.replace('_', ' ')}</span>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    {m.advantageDelta > 0
+                      ? `+${m.advantageDelta}% for Blue`
+                      : m.advantageDelta < 0
+                      ? `+${Math.abs(m.advantageDelta)}% for Orange`
+                      : 'Balanced'}
+                  </span>
+                  
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${m.badgeColor}`}>
+                    {m.recommendation === 'MUST_PICK' && <Crown className="w-2.5 h-2.5 text-emerald-400" />}
+                    {m.recommendation === 'SAFE_PICK' && <ThumbsUp className="w-2.5 h-2.5 text-blue-400" />}
+                    {m.recommendation === 'BALANCED' && <Shield className="w-2.5 h-2.5 text-zinc-400" />}
+                    {m.recommendation === 'RISK_BAN' && <ThumbsDown className="w-2.5 h-2.5 text-amber-400" />}
+                    {m.recommendation === 'PERMABAN' && <Ban className="w-2.5 h-2.5 text-red-400" />}
+                    <span>{m.recommendation.replace('_', ' ')}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

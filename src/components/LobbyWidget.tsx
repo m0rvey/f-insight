@@ -40,7 +40,7 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
       {isVisible && showVeto && (
         <VetoMatrix
           match={payload.match}
-          playersStats={payload.playersStats}
+          playersStats={payload.playersStats || {}}
         />
       )}
     </div>

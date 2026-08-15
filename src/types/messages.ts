@@ -51,11 +51,11 @@ export interface AdvancedMatchPrediction {
 
 export interface LobbyAnalysisPayload {
   match: FaceitMatchDetails;
-  playersStats: Record<string, FaceitPlayerFullStats>;
-  steamData: Record<string, SteamFullData>;
-  riskAnalysis: Record<string, RiskAnalysisResult>;
-  premadeGroups: PremadeGroup[];
-  teamSummary: {
+  playersStats?: Record<string, FaceitPlayerFullStats>;
+  steamData?: Record<string, SteamFullData>;
+  riskAnalysis?: Record<string, RiskAnalysisResult>;
+  premadeGroups?: PremadeGroup[];
+  teamSummary?: {
     faction1: {
       totalElo: number;
       avgElo: number;
@@ -76,7 +76,8 @@ export interface LobbyAnalysisPayload {
     };
     eloDifference: number;
   };
-  prediction: AdvancedMatchPrediction;
+  prediction?: AdvancedMatchPrediction;
+  isPartial?: boolean;
 }
 
 export type ExtensionMessage =

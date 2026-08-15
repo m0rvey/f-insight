@@ -6,7 +6,7 @@ interface CacheEntry<T> {
 
 export const TTL = {
   MATCH: 3 * 60 * 1000,        // 3 minutes
-  PLAYER_STATS: 15 * 60 * 1000, // 15 minutes
+  PLAYER_STATS: 60 * 60 * 1000, // 1 hour (Aggressive caching)
   STEAM_PROFILE: 24 * 60 * 60 * 1000, // 24 hours
   SETTINGS: Number.MAX_SAFE_INTEGER,
 } as const;
