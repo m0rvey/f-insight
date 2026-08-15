@@ -10,6 +10,8 @@ import { LobbyWidget } from '../components/LobbyWidget';
 import { PlayerBadge } from '../components/PlayerBadge';
 import { PlayerDetailFlyout } from '../components/PlayerDetailFlyout';
 import { QuickControls } from '../components/QuickControls';
+import { calculateMapVetoRanking } from '../services/forecastEngine';
+import { detectCurrentPlayer, DetectedCurrentUser } from '../services/currentUserDetector';
 import '../styles/tailwind.css';
 
 class ContentEngine {
@@ -17,6 +19,7 @@ class ContentEngine {
   private domObserver = new DomObserver();
   private currentMatchId: string | null = null;
   private lobbyPayload: LobbyAnalysisPayload | null = null;
+  private currentUser: DetectedCurrentUser | null = null;
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private isLoading: boolean = false;
   private isVisible: boolean = true;
@@ -56,19 +59,37 @@ class ContentEngine {
     });
 
     this.domObserver.startObserving(() => {
-      if (this.lobbyPayload?.match && !this.lobbyPayload.match.server_ip) {
-        const liveIp = this.domObserver.findServerIpFromDom();
-        if (liveIp) {
-          this.lobbyPayload.match.server_ip = liveIp;
+      if (this.lobbyPayload?.match) {
+        if (!this.lobbyPayload.match.server_ip) {
+          const liveIp = this.domObserver.findServerIpFromDom();
+          if (liveIp) {
+            this.lobbyPayload.match.server_ip = liveIp;
+          }
         }
       }
 
-      autoActionsEngine.checkAndExecute(this.settings, this.lobbyPayload?.match?.server_ip);
+      autoActionsEngine.checkAndExecute(
+        this.settings,
+        this.lobbyPayload?.match?.server_ip,
+        this.lobbyPayload?.prediction ? calculateMapVetoRanking({
+          f1Players: Object.values(this.lobbyPayload.playersStats || {}).slice(0, 5),
+          f2Players: Object.values(this.lobbyPayload.playersStats || {}).slice(5, 10),
+          availableMaps: this.lobbyPayload.match?.voting?.map?.entities?.map((e: any) => e.name || e.guid || '')
+        }) : undefined
+      );
 
       if (this.currentMatchId && this.lobbyPayload) {
         this.renderAll();
       }
     });
+
+    // Periodic safety check (300ms) for instant Auto Ready-Up and QoL automations
+    window.setInterval(() => {
+      autoActionsEngine.checkAndExecute(
+        this.settings,
+        this.lobbyPayload?.match?.server_ip
+      );
+    }, 300);
 
     this.renderFloatingControls();
 
@@ -164,6 +185,13 @@ class ContentEngine {
       this.lastRenderActiveFlyoutId !== this.activePlayerFlyoutId ||
       this.lastRenderIsLoading !== this.isLoading;
 
+    if (!this.currentUser && this.lobbyPayload?.match) {
+      this.currentUser = detectCurrentPlayer(
+        this.lobbyPayload.match.teams?.faction1?.roster || [],
+        this.lobbyPayload.match.teams?.faction2?.roster || []
+      );
+    }
+
     if (stateChanged) {
       this.playerRenderedState.clear();
       this.lastRenderPayload = this.lobbyPayload;
@@ -201,6 +229,7 @@ class ContentEngine {
           <LobbyWidget
             payload={this.lobbyPayload}
             isLoading={this.isLoading}
+            currentUser={this.currentUser || undefined}
             onRefresh={() => this.currentMatchId && this.fetchLobbyData(this.currentMatchId, true)}
             showVetoMatrix={this.showVetoMatrix}
             onToggleVetoMatrix={() => {
@@ -260,6 +289,8 @@ class ContentEngine {
           const steam = this.lobbyPayload.steamData?.[pId];
           const risk = this.lobbyPayload.riskAnalysis?.[pId];
           const premade = (this.lobbyPayload.premadeGroups || []).find((g) => g.playerIds.includes(pId));
+          const isUser = this.currentUser?.playerId === pId ||
+            (Boolean(this.currentUser?.nickname) && this.currentUser?.nickname?.toLowerCase() === rosterItem.nickname.toLowerCase());
 
           root.render(
             <React.StrictMode>
@@ -270,6 +301,7 @@ class ContentEngine {
                 risk={risk}
                 premadeGroup={premade}
                 selectedMap={this.lobbyPayload.match.selected_map}
+                isCurrentUser={isUser}
                 onOpenDetails={(id) => {
                   this.activePlayerFlyoutId = id;
                   this.renderModal(true);

@@ -1,6 +1,7 @@
 import React from 'react';
 import { FaceitMatchDetails, FaceitPlayerFullStats } from '../types/faceit';
 import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
+import { DetectedCurrentUser } from '../services/currentUserDetector';
 import {
   Layers,
   ThumbsUp,
@@ -9,20 +10,27 @@ import {
   Sparkles,
   Ban,
   Crown,
+  UserCheck,
+  Star,
 } from 'lucide-react';
 
 interface VetoMatrixProps {
   match: FaceitMatchDetails;
   playersStats: Record<string, FaceitPlayerFullStats>;
+  currentUser?: DetectedCurrentUser;
 }
 
-export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {} }) => {
+export const VetoMatrix: React.FC<VetoMatrixProps> = ({
+  match,
+  playersStats = {},
+  currentUser,
+}) => {
   if (Object.keys(playersStats).length < 2) {
     return (
       <div className="w-full mb-4 font-sans text-white animate-pulse">
         <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-card bg-[#18181C]/90 h-64 flex items-center justify-center flex-col gap-3 text-zinc-500 font-mono text-xs shadow-inner">
-           <Layers className="w-6 h-6 animate-pulse text-purple-400" />
-           <span>Building Map Veto Intelligence...</span>
+          <Layers className="w-6 h-6 animate-pulse text-purple-400" />
+          <span>Building Map Veto Intelligence...</span>
         </div>
       </div>
     );
@@ -46,11 +54,21 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {}
   const f1Players = (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
   const f2Players = (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
 
-  // Calculate 100% accurate Bayesian sample-weighted rankings
-  const rankedMaps = calculateMapVetoRanking({ f1Players, f2Players });
-
-  // Map voting entities for live veto status
+  // Map voting entities for live veto status & map pool
   const votingEntities = match.voting?.map?.entities || [];
+  const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
+
+  const userFaction = currentUser?.faction;
+  const isF2 = userFaction === 'faction2';
+
+  // Calculate 100% accurate Bayesian sample-weighted rankings relative to user's perspective
+  const rankedMaps = calculateMapVetoRanking({
+    f1Players,
+    f2Players,
+    availableMaps,
+    userFaction,
+  });
+
   const mapStatusMap = new Map<string, string>();
   for (const entity of votingEntities) {
     const cleanName = (entity.name || '').replace('de_', '').toLowerCase();
@@ -59,7 +77,7 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {}
     }
   }
 
-  // Best Pick & Best Ban for Team 1
+  // Best Pick & Best Ban for Your Team (or Faction 1)
   const bestPick = rankedMaps.find((m) => {
     const status = mapStatusMap.get(m.mapName);
     return status !== 'drop';
@@ -70,7 +88,35 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {}
     return status !== 'drop';
   }) || rankedMaps[rankedMaps.length - 1];
 
+  // Personal Comfort Map for the Current User
+  const userPlayer = currentUser?.playerId ? playersStats[currentUser.playerId] : undefined;
+  let personalComfortMap: { mapName: string; winRate: number; kd: number; matches: number } | undefined;
+
+  if (userPlayer && userPlayer.mapStats) {
+    const activeMapStats = Object.values(userPlayer.mapStats).filter((m) => {
+      const status = mapStatusMap.get(m.mapName);
+      return status !== 'drop';
+    });
+
+    if (activeMapStats.length > 0) {
+      const sorted = [...activeMapStats].sort(
+        (a, b) => (b.wins * 3 + b.winRate + b.kd * 25) - (a.wins * 3 + a.winRate + a.kd * 25)
+      );
+      if (sorted[0] && sorted[0].matches >= 3) {
+        personalComfortMap = {
+          mapName: sorted[0].mapName,
+          winRate: sorted[0].winRate,
+          kd: sorted[0].kd,
+          matches: sorted[0].matches,
+        };
+      }
+    }
+  }
+
   const selectedMapClean = match.selected_map?.replace('de_', '').toLowerCase();
+
+  const myTeamLabel = userFaction ? 'Your Team' : f1.name;
+  const enemyTeamLabel = userFaction ? 'Enemy Team' : f2.name;
 
   return (
     <div className="w-full mb-4 font-sans text-white animate-fade-in selection:bg-faceit-orange selection:text-black">
@@ -82,75 +128,112 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {}
               <Layers className="w-4 h-4 text-purple-400" />
             </div>
             <div>
-              <span className="font-extrabold text-sm tracking-wide text-zinc-100 block">
-                Map Veto & Action Plan
-              </span>
-              <span className="text-[11px] text-zinc-400 font-normal">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm tracking-wide text-zinc-100 block">
+                  Map Veto & Action Plan
+                </span>
+                {currentUser?.isDetected && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-bold font-mono">
+                    <UserCheck className="w-3 h-3 text-cyan-300" />
+                    Personalized for {currentUser.nickname || 'You'} ({isF2 ? f2.name : f1.name})
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] text-zinc-400 font-normal block mt-0.5">
                 True sample-weighted map proficiency (wins, matches, K/D, ADR) across both 5-man rosters
               </span>
             </div>
           </div>
         </div>
 
-        {/* Captain Action Plan Quick HUD */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Action Plan Quick HUD */}
+        <div className={`grid grid-cols-1 ${personalComfortMap ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
           {/* Recommended Pick */}
-          <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between">
+          <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                <ThumbsUp className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center">
+                <ThumbsUp className="w-4 h-4 text-emerald-400" />
               </div>
               <div>
-                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
-                  Priority 1: Best Pick for Blue
+                <span className="text-[10px] text-emerald-400 font-extrabold uppercase tracking-wider block">
+                  Priority 1: Best Pick ({myTeamLabel})
                 </span>
-                <span className="text-sm font-extrabold text-white capitalize font-mono">
+                <span className="text-sm font-black text-white capitalize font-mono">
                   {bestPick.mapName}
                 </span>
               </div>
             </div>
             <div className="text-right font-mono">
               <span className="text-xs font-black text-emerald-400 block">
-                +{bestPick.advantageDelta}%
+                +{Math.abs(bestPick.advantageDelta)}% Adv
               </span>
               <span className="text-[10px] text-zinc-400">
-                {bestPick.f1WinRate}% vs {bestPick.f2WinRate}% WR
+                {isF2 ? bestPick.f2WinRate : bestPick.f1WinRate}% vs {isF2 ? bestPick.f1WinRate : bestPick.f2WinRate}% WR
               </span>
             </div>
           </div>
 
           {/* Recommended Ban */}
-          <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/30 flex items-center justify-between">
+          <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center">
-                <ThumbsDown className="w-3.5 h-3.5 text-red-400" />
+              <div className="w-8 h-8 rounded-lg bg-red-500/20 border border-red-500/50 flex items-center justify-center">
+                <ThumbsDown className="w-4 h-4 text-red-400" />
               </div>
               <div>
-                <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider block">
-                  Priority 1: Must Ban for Blue
+                <span className="text-[10px] text-red-400 font-extrabold uppercase tracking-wider block">
+                  Priority 1: Must Ban ({enemyTeamLabel})
                 </span>
-                <span className="text-sm font-extrabold text-white capitalize font-mono">
+                <span className="text-sm font-black text-white capitalize font-mono">
                   {bestBan.mapName}
                 </span>
               </div>
             </div>
             <div className="text-right font-mono">
               <span className="text-xs font-black text-red-400 block">
-                {bestBan.advantageDelta}%
+                -{Math.abs(bestBan.advantageDelta)}% Adv
               </span>
               <span className="text-[10px] text-zinc-400">
-                {bestBan.f1WinRate}% vs {bestBan.f2WinRate}% WR
+                {isF2 ? bestBan.f2WinRate : bestBan.f1WinRate}% vs {isF2 ? bestBan.f1WinRate : bestBan.f2WinRate}% WR
               </span>
             </div>
           </div>
+
+          {/* Personal Comfort Pick */}
+          {personalComfortMap && (
+            <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/40 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center">
+                  <Star className="w-4 h-4 text-cyan-300 fill-cyan-300" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-cyan-300 font-extrabold uppercase tracking-wider block">
+                    Your Personal Comfort Map
+                  </span>
+                  <span className="text-sm font-black text-white capitalize font-mono">
+                    {personalComfortMap.mapName}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right font-mono">
+                <span className="text-xs font-black text-cyan-300 block">
+                  {personalComfortMap.winRate}% WR
+                </span>
+                <span className="text-[10px] text-zinc-400">
+                  {personalComfortMap.kd.toFixed(2)} KD • {personalComfortMap.matches} games
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 7-Map Detailed Tactical Matrix */}
+        {/* Tactical Map Matrix */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {rankedMaps.map((m: MapVetoRankItem) => {
             const liveStatus = mapStatusMap.get(m.mapName);
             const isBanned = liveStatus === 'drop';
             const isSelected = selectedMapClean === m.mapName || liveStatus === 'pick';
+
+            const userMapStat = userPlayer?.mapStats?.[m.mapName];
 
             return (
               <div
@@ -170,7 +253,7 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {}
                       className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black ${
                         m.rank === 1
                           ? 'bg-emerald-500 text-black shadow-glow-orange'
-                          : m.rank === 7
+                          : m.rank === rankedMaps.length
                           ? 'bg-red-500/80 text-white'
                           : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
                       }`}
@@ -195,34 +278,48 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({ match, playersStats = {}
                 </div>
 
                 {/* Team Stats Comparison */}
-                <div className="grid grid-cols-2 gap-2 mb-2.5 text-center font-mono">
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5">
-                    <div className="text-[9px] text-blue-400 font-bold mb-0.5 truncate">{f1.name}</div>
+                <div className="grid grid-cols-2 gap-2 mb-2 text-center font-mono">
+                  <div className={`rounded-lg p-2 border ${userFaction === 'faction1' ? 'bg-cyan-950/20 border-cyan-500/30' : 'bg-black/40 border-white/5'}`}>
+                    <div className="text-[9px] text-blue-400 font-bold mb-0.5 truncate">
+                      {f1.name} {userFaction === 'faction1' ? '(YOU)' : ''}
+                    </div>
                     <div className="font-bold text-zinc-100 text-xs">{m.f1WinRate}%</div>
-                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f1AvgKd} KD • {m.f1Matches} matches</div>
+                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f1AvgKd} KD • {m.f1Matches}m</div>
                   </div>
-                  <div className="bg-black/40 rounded-lg p-2 border border-white/5">
-                    <div className="text-[9px] text-orange-400 font-bold mb-0.5 truncate">{f2.name}</div>
+                  <div className={`rounded-lg p-2 border ${userFaction === 'faction2' ? 'bg-cyan-950/20 border-cyan-500/30' : 'bg-black/40 border-white/5'}`}>
+                    <div className="text-[9px] text-orange-400 font-bold mb-0.5 truncate">
+                      {f2.name} {userFaction === 'faction2' ? '(YOU)' : ''}
+                    </div>
                     <div className="font-bold text-zinc-100 text-xs">{m.f2WinRate}%</div>
-                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f2AvgKd} KD • {m.f2Matches} matches</div>
+                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f2AvgKd} KD • {m.f2Matches}m</div>
                   </div>
                 </div>
+
+                {/* Personal stat chip on this map */}
+                {userMapStat && (
+                  <div className="mb-2 px-2 py-1 rounded bg-black/40 border border-cyan-500/20 flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-cyan-300 font-bold">Your Stats:</span>
+                    <span className="text-zinc-300">
+                      {userMapStat.winRate}% WR • {userMapStat.kd.toFixed(2)} KD ({userMapStat.matches}g)
+                    </span>
+                  </div>
+                )}
 
                 {/* Advantage & Recommendation */}
                 <div className="mt-auto flex items-center justify-between pt-2 border-t border-white/5">
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${
                       m.advantageDelta >= 10
-                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                         : m.advantageDelta <= -10
-                        ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                        ? 'bg-red-500/20 text-red-300 border-red-500/30'
                         : 'bg-zinc-800 text-zinc-300 border-zinc-700'
                     }`}
                   >
                     {m.advantageDelta > 0
-                      ? `+${m.advantageDelta}% for Blue`
+                      ? `+${m.advantageDelta}% ${userFaction ? 'Your Adv' : 'Blue'}`
                       : m.advantageDelta < 0
-                      ? `+${Math.abs(m.advantageDelta)}% for Orange`
+                      ? `+${Math.abs(m.advantageDelta)}% ${userFaction ? 'Enemy Adv' : 'Orange'}`
                       : 'Balanced'}
                   </span>
                   

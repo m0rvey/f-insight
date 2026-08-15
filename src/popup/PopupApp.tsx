@@ -12,7 +12,6 @@ import {
   Users,
   Compass,
   Play,
-  Volume2,
   Copy,
   UserCheck,
 } from 'lucide-react';
@@ -269,14 +268,58 @@ export const PopupApp: React.FC = () => {
               }}
             />
             <SettingToggle
-              title="Server Ready Sound Alert"
-              description="Plays pleasant chime when server is ready"
-              icon={Volume2}
-              iconColorClass="text-purple-400"
-              checked={settings.playReadySound}
+              title="Auto-Dismiss AFK Checks"
+              description="Auto-clicks 'I am here' on inactivity popups"
+              icon={Shield}
+              iconColorClass="text-cyan-400"
+              checked={settings.autoDismissAfk}
               onChange={(val) => {
-                setSettings({ ...settings, playReadySound: val });
-                handleSaveSettings({ playReadySound: val });
+                setSettings({ ...settings, autoDismissAfk: val });
+                handleSaveSettings({ autoDismissAfk: val });
+              }}
+            />
+            <SettingToggle
+              title="Auto-Continue Match Queuing"
+              description="Resumes search if another player fails check-in"
+              icon={Compass}
+              iconColorClass="text-purple-400"
+              checked={settings.autoContinueQueue}
+              onChange={(val) => {
+                setSettings({ ...settings, autoContinueQueue: val });
+                handleSaveSettings({ autoContinueQueue: val });
+              }}
+            />
+            <SettingToggle
+              title="Auto-Dismiss Captain Notices"
+              description="Auto-confirms captain and coin toss dialogs"
+              icon={Zap}
+              iconColorClass="text-yellow-400"
+              checked={settings.autoDismissCaptain}
+              onChange={(val) => {
+                setSettings({ ...settings, autoDismissCaptain: val });
+                handleSaveSettings({ autoDismissCaptain: val });
+              }}
+            />
+            <SettingToggle
+              title="Clean Interface (Hide Banners)"
+              description="Hides client download banners and promos"
+              icon={Sliders}
+              iconColorClass="text-zinc-400"
+              checked={settings.autoHideClientBanner}
+              onChange={(val) => {
+                setSettings({ ...settings, autoHideClientBanner: val });
+                handleSaveSettings({ autoHideClientBanner: val });
+              }}
+            />
+            <SettingToggle
+              title="Auto-Veto Captain Assist"
+              description="Auto-bans team worst map during live veto"
+              icon={Layers}
+              iconColorClass="text-faceit-orange"
+              checked={settings.autoVetoMaps}
+              onChange={(val) => {
+                setSettings({ ...settings, autoVetoMaps: val });
+                handleSaveSettings({ autoVetoMaps: val });
               }}
             />
           </div>

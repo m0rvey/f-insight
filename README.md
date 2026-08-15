@@ -28,25 +28,28 @@
 ## ✨ Key Features
 
 ### 1. ⚡ Matchmaking Automation & QoL
-- **Auto Ready-Up**: Automatically detects and accepts matches when the queue pops.
-- **Auto-Accept Party Invites**: Automatically accepts lobby invitations from friends.
+- **Auto Ready-Up**: Automatically detects and clicks Accept/Check-in when the queue pops.
+- **Auto AFK Inactivity Dismiss**: Auto-accepts *"Are you still here?"* checks so you never get dropped from matchmaking while alt-tabbed.
+- **Auto-Continue Match Queuing**: Resumes search if another player fails check-in.
+- **Auto-Dismiss Captain Notices**: Confirms captain assignment and coin toss dialogs without interrupting workflow.
+- **Clean Interface (Hide Banners)**: Suppresses intrusive desktop client download banners and promos.
 - **1-Click Connect IP & Quick Copy**: Instantly copies `connect <ip:port>` and provides a 1-click `steam://connect` launch button.
-- **Audio Chimes**: Plays a pleasant audio alert when the match server is configured and ready.
-- **Projected Elo Stakes**: Shows exact points won or lost (e.g. `+24 / -26 ELO`) for each team.
-- **Live Server Geolocation**: Accurately recognizes Russian (Moscow, SPB, Yekaterinburg, Novosibirsk), CIS (Almaty, Astana, Minsk, Kyiv), and EU servers.
+- **Projected Elo Stakes**: Shows exact points won or lost (e.g. `+21 / -29 ELO`) for each team.
 
 ### 2. 🧠 Multi-Factor Prediction & Tactical Analytics
 - **Multi-Factor CS2 Win Predictor**: Integrates Base Elo, Selected Map proficiency ($\pm 12\%$), Team Momentum & Hot/Cold player count ($\pm 10\%$), and Premade party cohesion ($\pm 8\%$).
 - **MR12 Score Line Simulation**: Projects realistic match scores (e.g. `13 : 9` or `13 : 11 (OT Likely)`).
-- **Map Veto & Action Plan**: Bayesian sample-weighted 7-map tactical matrix with **Priority 1: Best Pick** and **Priority 1: Must Ban** recommendations for captains.
+- **Expanded CS2 Map Veto & Action Plan**: Full CS2 map pool (including Cache, Train, Overpass + dynamic tournament maps) with **Priority 1: Best Pick** and **Priority 1: Must Ban** recommendations for captains.
 - **Team Top Map**: Displayed in the main comparison bar alongside Avg Elo, Avg K/D, Avg ADR, and Avg HS%.
 - **FCR (Firepower Contribution Rating)**: Calculates each player's firepower and impact share in their team (sums to 100%, $>25\%$ indicates star carry).
 
-### 3. 🎴 Compact Player Stat Strips
+### 3. 🎴 Player Skill Radar, Elo Progress & History
+- **5-Axis Pentagon Skill Radar**: Real-time SVG spider chart evaluating **Firepower** (K/D), **Damage** (ADR), **Precision** (HS%), **Winrate**, and **Impact** (FCR/Form).
+- **CS2 Level & Elo Progress Bar**: Accurate level progression bar (Levels 1–10) showing exact points to Level Up (`+45 ELO to Level 10`) and demotion buffer warnings.
+- **Match History +/- Elo Delta Chips**: Displays exact `+25` / `-24` rating changes directly on each match in player history.
 - **Clean Bottom Stat Strip**: Mounts cleanly below each player card with K/D, ADR, HS%, and Win%.
 - **Consecutive Win/Loss Streaks**: Real-time momentum indicator (e.g. `🔥 4W` or `🧊 3L`).
 - **Player Form & Momentum**: 🔥 `ON FIRE` ($>+15\%$ above baseline) or 🧊 `COLD / TILT`.
-- **1-Click FACEIT Stats Link**: Instant direct access to detailed CS2 statistics.
 
 ### 4. 🚨 Smurf Risk Scorer & Red Flags (0–100%)
 - **Smart Weighted Risk Scoring**: Flags low-match high-Elo accounts, abnormal winrates ($>70\%$), and K/D spikes.
@@ -94,7 +97,7 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 ## 🛡️ Safety & ToS Compliance
 
 - ✅ **Safe & Read-Only First**: Analytics and overlays are strictly read-only.
-- ⚙️ **Configurable Automation**: Auto-Ready and sound alerts can be toggled on/off in the extension popup.
+- ⚙️ **Configurable Automation**: Auto-Ready and Auto-Copy connect IP can be toggled on/off in the extension popup.
 - 🔒 **Privacy Focused**: Cache and settings are stored locally on your device in `chrome.storage.local`.
 
 ---

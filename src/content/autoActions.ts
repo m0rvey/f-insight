@@ -1,17 +1,22 @@
 import { ExtensionSettings } from '../types/settings';
+import { MapVetoRankItem } from '../services/forecastEngine';
 
 export class AutoActionsEngine {
-  private hasReadiedCurrentMatch = false;
-  private hasPlayedServerSound = false;
+  private lastClickedButton: Element | null = null;
+  private lastClickTime = 0;
   private hasCopiedServerIp = false;
 
   public resetForNewMatch() {
-    this.hasReadiedCurrentMatch = false;
-    this.hasPlayedServerSound = false;
+    this.lastClickedButton = null;
+    this.lastClickTime = 0;
     this.hasCopiedServerIp = false;
   }
 
-  public checkAndExecute(settings: ExtensionSettings, serverIp?: string) {
+  public checkAndExecute(
+    settings: ExtensionSettings,
+    serverIp?: string,
+    rankedMaps?: MapVetoRankItem[]
+  ) {
     if (settings.autoReadyUp) {
       this.checkAutoReady();
     }
@@ -20,47 +25,178 @@ export class AutoActionsEngine {
       this.checkAutoAcceptParty();
     }
 
+    if (settings.autoDismissAfk) {
+      this.checkAutoInactiveDismiss();
+    }
+
+    if (settings.autoContinueQueue) {
+      this.checkAutoQueueContinue();
+    }
+
+    if (settings.autoDismissCaptain) {
+      this.checkAutoCaptainDismiss();
+    }
+
+    if (settings.autoHideClientBanner) {
+      this.checkHideClientDownloadBanner();
+    }
+
+    if (settings.autoVetoMaps && rankedMaps && rankedMaps.length > 0) {
+      this.checkAutoVeto(rankedMaps);
+    }
+
     if (serverIp) {
       this.handleServerReady(serverIp, settings);
     }
   }
 
+  private clickElementSafely(el: Element, actionLabel: string): boolean {
+    const now = Date.now();
+    if (el === this.lastClickedButton && now - this.lastClickTime < 5000) {
+      return false;
+    }
+
+    const isHtmlBtn = el instanceof HTMLButtonElement;
+    if (isHtmlBtn && el.disabled) return false;
+    if (el.getAttribute('aria-disabled') === 'true') return false;
+    if (el.classList.contains('disabled')) return false;
+
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    if (window.getComputedStyle(el).visibility === 'hidden') return false;
+    if (window.getComputedStyle(el).display === 'none') return false;
+
+    console.log(`[f-insight:AutoAction] ${actionLabel} triggered`);
+    this.lastClickedButton = el;
+    this.lastClickTime = now;
+
+    try {
+      if (typeof (el as HTMLElement).click === 'function') {
+        (el as HTMLElement).click();
+      }
+      el.dispatchEvent(
+        new MouseEvent('click', {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      return true;
+    } catch (err) {
+      console.warn(`[f-insight:AutoAction] Error clicking for ${actionLabel}:`, err);
+      return false;
+    }
+  }
+
   private checkAutoReady() {
-    if (this.hasReadiedCurrentMatch) return;
+    const now = Date.now();
+    if (now - this.lastClickTime < 2000) return;
 
-    // Search for match ready / check-in modal buttons in FACEIT DOM
-    const buttons = document.querySelectorAll('[class*="MatchReady"] button, [class*="check-in"] button, [data-testid*="ready"] button');
-    for (const btn of buttons) {
-      if (!(btn instanceof HTMLButtonElement)) continue;
-      const text = btn.textContent?.trim().toUpperCase() || '';
-      const isReadyBtn =
-        text === 'CHECK IN' ||
-        text === 'ACCEPT' ||
-        text === 'READY' ||
-        text.includes('CHECK IN') ||
-        text.includes('ACCEPT MATCH');
+    const candidates = document.querySelectorAll(
+      'button, [role="button"], a[role="button"], [data-testid*="check-in"], [data-testid*="ready"], [data-testid*="accept"], [class*="MatchReady"] button, [class*="check-in"] button'
+    );
 
-      // Ensure button is visible and not disabled
-      if (isReadyBtn && !btn.disabled && btn.offsetParent !== null) {
-        console.log('[f-insight:AutoAction] Auto-Ready button detected, accepting match...');
-        this.hasReadiedCurrentMatch = true;
+    const READY_REGEX = /^(CHECK\s*IN|ACCEPT|READY|ПРИНЯТЬ|ГОТОВ)(\s*\(\d+s?\))?$/i;
+    const READY_SUBSTRING_REGEX = /(CHECK\s*IN|ACCEPT\s*MATCH|READY\s*UP|ПРИНЯТЬ\s*МАТЧ|ПОДТВЕРДИТЬ)/i;
 
-        // Slight randomized delay (150ms) to simulate natural click
-        setTimeout(() => {
-          btn.click();
-        }, 150);
-        break;
+    for (const el of candidates) {
+      const rawText = el.textContent?.trim().replace(/\s+/g, ' ') || '';
+      if (!rawText) continue;
+
+      if (READY_REGEX.test(rawText) || READY_SUBSTRING_REGEX.test(rawText)) {
+        if (this.clickElementSafely(el, `Auto-Ready ("${rawText}")`)) {
+          break;
+        }
       }
     }
   }
 
   private checkAutoAcceptParty() {
-    // Search for party invite popovers
-    const inviteButtons = document.querySelectorAll('button[class*="party-invite"], [data-testid*="party-invite"] button');
+    const inviteButtons = document.querySelectorAll(
+      'button[class*="party-invite"], [data-testid*="party-invite"] button, [class*="PartyInvite"] button'
+    );
     for (const btn of inviteButtons) {
       const text = btn.textContent?.trim().toUpperCase() || '';
-      if ((text === 'ACCEPT' || text === 'JOIN') && btn instanceof HTMLButtonElement && !btn.disabled) {
-        btn.click();
+      if (text === 'ACCEPT' || text === 'JOIN' || text.includes('ПРИНЯТЬ')) {
+        if (this.clickElementSafely(btn, 'Auto-Accept Party Invite')) {
+          break;
+        }
+      }
+    }
+  }
+
+  private checkAutoInactiveDismiss() {
+    // Dismiss "Are you still here?" AFK inactivity modal
+    const buttons = document.querySelectorAll('button, [role="button"]');
+    const AFK_REGEX = /^(I'M\s*HERE|STILL\s*HERE|CONTINUE|Я\s*ЗДЕСЬ|ПРОДОЛЖИТЬ)$/i;
+
+    for (const btn of buttons) {
+      const text = btn.textContent?.trim().replace(/\s+/g, ' ') || '';
+      if (AFK_REGEX.test(text)) {
+        // Confirm it's inside a modal or dialog
+        const modalParent = btn.closest('[role="dialog"], [class*="Modal"], [class*="modal"], [class*="popup"]');
+        if (modalParent) {
+          if (this.clickElementSafely(btn, 'AFK Inactivity Check Dismiss')) {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  private checkAutoQueueContinue() {
+    // Continue search when match aborted because someone failed to ready up
+    const buttons = document.querySelectorAll('[data-testid*="continue"], [class*="queue"] button, [role="dialog"] button');
+    const QUEUE_CONT_REGEX = /^(CONTINUE\s*SEARCH|FIND\s*MATCH|CONTINUE|ПРОДОЛЖИТЬ\s*ПОИСК|ИСКАТЬ\s*СНОВА)$/i;
+
+    for (const btn of buttons) {
+      const text = btn.textContent?.trim().replace(/\s+/g, ' ') || '';
+      if (QUEUE_CONT_REGEX.test(text)) {
+        if (this.clickElementSafely(btn, 'Queue Auto-Continue Search')) {
+          break;
+        }
+      }
+    }
+  }
+
+  private checkAutoCaptainDismiss() {
+    // Auto-dismiss "You are the captain" confirmation modals
+    const modal = document.querySelector('[class*="CaptainModal"], [class*="captain-modal"], [data-testid*="captain-modal"]');
+    if (modal) {
+      const btn = modal.querySelector('button');
+      if (btn) {
+        this.clickElementSafely(btn, 'Captain Notice Auto-Dismiss');
+      }
+    }
+  }
+
+  private checkHideClientDownloadBanner() {
+    // Hide Faceit Client desktop download banners
+    const banners = document.querySelectorAll(
+      '[class*="DownloadBanner"], [class*="download-banner"], [class*="client-banner"], [class*="ClientDownload"]'
+    );
+    for (const banner of banners) {
+      if (banner instanceof HTMLElement && banner.style.display !== 'none') {
+        banner.style.display = 'none';
+        console.log('[f-insight:AutoAction] Hidden Faceit Client Download Banner');
+      }
+    }
+  }
+
+  private checkAutoVeto(rankedMaps: MapVetoRankItem[]) {
+    // Find active map ban buttons if it's currently user team's turn to vote
+    const voteButtons = document.querySelectorAll('button[class*="vote"], [data-testid*="vote-button"], [class*="voting-button"]');
+    if (voteButtons.length === 0) return;
+
+    // Lowest ranked map that is recommended for PERMABAN or RISK_BAN
+    const worstMap = [...rankedMaps].reverse().find((m) => m.recommendation === 'PERMABAN' || m.recommendation === 'RISK_BAN');
+    if (!worstMap) return;
+
+    for (const btn of voteButtons) {
+      const mapContainer = btn.closest('[class*="map"], [data-testid*="map-entity"]');
+      const text = (mapContainer?.textContent || btn.textContent || '').toLowerCase();
+      if (text.includes(worstMap.mapName)) {
+        this.clickElementSafely(btn, `Auto-Veto Ban for ${worstMap.mapName}`);
         break;
       }
     }
@@ -69,61 +205,19 @@ export class AutoActionsEngine {
   private handleServerReady(serverIp: string, settings: ExtensionSettings) {
     if (!serverIp || serverIp.length < 5) return;
 
-    // 1. Play pleasant chime sound
-    if (settings.playReadySound && !this.hasPlayedServerSound) {
-      this.hasPlayedServerSound = true;
-      this.playChime();
-    }
-
-    // 2. Auto-copy connect string to clipboard
+    // Auto-copy connect string to clipboard
     if (settings.autoCopyConnectIp && !this.hasCopiedServerIp) {
       this.hasCopiedServerIp = true;
       const connectCmd = `connect ${serverIp}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(connectCmd)
-            .then(() => {
-              console.log(`[f-insight:AutoAction] Copied "${connectCmd}" to clipboard`);
-            })
-            .catch((err) => {
-              console.warn('[f-insight:AutoAction] Clipboard write failed:', err);
-            });
+        navigator.clipboard.writeText(connectCmd)
+          .then(() => {
+            console.log(`[f-insight:AutoAction] Copied "${connectCmd}" to clipboard`);
+          })
+          .catch((err) => {
+            console.warn('[f-insight:AutoAction] Clipboard write failed:', err);
+          });
       }
-    }
-  }
-
-  private playChime() {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-
-      const now = ctx.currentTime;
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(587.33, now); // D5
-      osc1.frequency.setValueAtTime(880.0, now + 0.12); // A5
-
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(440.0, now); // A4
-      osc2.frequency.setValueAtTime(659.25, now + 0.12); // E5
-
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 0.4);
-      osc2.stop(now + 0.4);
-    } catch (err) {
-      // Ignore audio policy restrictions
     }
   }
 }

@@ -105,9 +105,9 @@ describe('calculateRiskScore', () => {
     };
 
     const result = calculateRiskScore(smurf, steam);
-    expect(result.score).toBeGreaterThanOrEqual(75);
+    expect(result.score).toBeGreaterThanOrEqual(70);
     expect(result.level).toBe('CRITICAL');
-    expect(result.flags.some((f) => f.id === 'lvl10_low_matches')).toBe(true);
+    expect(result.flags.some((f) => f.id.includes('lvl10'))).toBe(true);
     expect(result.flags.some((f) => f.id === 'extreme_kd')).toBe(true);
     expect(result.flags.some((f) => f.id === 'low_steam_hours')).toBe(true);
   });

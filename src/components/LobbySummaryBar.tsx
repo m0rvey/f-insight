@@ -16,8 +16,9 @@ import {
   Globe,
   Calendar,
   Sparkles,
-  MapPin,
 } from 'lucide-react';
+
+import { DetectedCurrentUser } from '../services/currentUserDetector';
 
 interface LobbySummaryBarProps {
   payload: LobbyAnalysisPayload;
@@ -27,6 +28,7 @@ interface LobbySummaryBarProps {
   onToggleVisibility: () => void;
   showVetoMatrix?: boolean;
   onToggleVetoMatrix?: () => void;
+  currentUser?: DetectedCurrentUser;
 }
 
 export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
@@ -37,6 +39,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   onToggleVisibility,
   showVetoMatrix,
   onToggleVetoMatrix,
+  currentUser,
 }) => {
   const { match, teamSummary, riskAnalysis, premadeGroups, playersStats } = payload;
   const f1 = match.teams.faction1;
@@ -58,7 +61,9 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   const f1Players = (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
   const f2Players = (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
   
-  const rankedMaps = calculateMapVetoRanking({ f1Players, f2Players });
+  const votingEntities = match.voting?.map?.entities || [];
+  const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
+  const rankedMaps = calculateMapVetoRanking({ f1Players, f2Players, availableMaps });
   
   // Best maps for each team
   const f1TopMap = [...rankedMaps].sort((a, b) => b.advantageDelta - a.advantageDelta)[0];
@@ -66,6 +71,9 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
   const f1TopMapSummary = f1TopMap ? { name: f1TopMap.mapName, wr: f1TopMap.f1WinRate } : null;
   const f2TopMapSummary = f2TopMap ? { name: f2TopMap.mapName, wr: f2TopMap.f2WinRate } : null;
+
+  const selectedMapClean = match.selected_map?.replace(/^cs2_/, '').replace(/^csgo_/, '').replace(/^de_/, '').toLowerCase();
+  const selectedMapRankItem = selectedMapClean ? rankedMaps.find((m) => m.mapName === selectedMapClean) : undefined;
 
   // Compute High Risk Count
   const allRiskResults = Object.values(riskAnalysis || {});
@@ -140,15 +148,6 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                   <Globe className="w-3 h-3 text-zinc-400" />
                   {getRegionName(match.region)} ({match.region || 'EU'})
                 </span>
-                {match.server_location && (
-                  <>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 text-zinc-300 font-medium">
-                      <MapPin className="w-3 h-3 text-faceit-orange" />
-                      Server: {match.server_location}
-                    </span>
-                  </>
-                )}
                 {match.configured_at && (
                   <>
                     <span>•</span>
@@ -250,6 +249,53 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                   </div>
                 )}
 
+                {selectedMapRankItem && (
+                  <div className="p-3 rounded-xl bg-gradient-to-r from-blue-950/20 via-[#18181E] to-orange-950/20 border border-white/10 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-zinc-100 uppercase tracking-wide">
+                            {selectedMapRankItem.mapName} Matchup
+                          </span>
+                          <span className="text-[10px] px-2 py-0.2 rounded-full font-mono font-bold bg-white/10 border border-white/10 text-zinc-300">
+                            Map Impact
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-zinc-400 mt-0.5">
+                          {selectedMapRankItem.advantageDelta > 0 ? (
+                            <span className="text-blue-300 font-semibold">
+                              +{selectedMapRankItem.advantageDelta}% Map Edge for {f1.name}
+                            </span>
+                          ) : selectedMapRankItem.advantageDelta < 0 ? (
+                            <span className="text-orange-300 font-semibold">
+                              +{Math.abs(selectedMapRankItem.advantageDelta)}% Map Edge for {f2.name}
+                            </span>
+                          ) : (
+                            <span className="text-zinc-300 font-semibold">
+                              Even Map Matchup (Balanced)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 font-mono text-[11px] self-end sm:self-auto">
+                      <div className="text-right">
+                        <div className="text-blue-400 font-bold">{selectedMapRankItem.f1WinRate}% WR</div>
+                        <div className="text-[10px] text-zinc-500">{selectedMapRankItem.f1AvgKd} KD • {selectedMapRankItem.f1Matches}m</div>
+                      </div>
+                      <span className="text-zinc-600 font-sans">vs</span>
+                      <div className="text-left">
+                        <div className="text-orange-400 font-bold">{selectedMapRankItem.f2WinRate}% WR</div>
+                        <div className="text-[10px] text-zinc-500">{selectedMapRankItem.f2AvgKd} KD • {selectedMapRankItem.f2Matches}m</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-center">
                   <TeamCard
                     factionId={1}
@@ -262,6 +308,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     avgAdr={teamSummary.faction1.avgAdr}
                     avgHsPercent={teamSummary.faction1.avgHsPercent}
                     topMap={f1TopMapSummary}
+                    isUserTeam={currentUser?.faction === 'faction1'}
                   />
 
                   <div className="md:col-span-1 flex flex-col items-center justify-center text-center">
@@ -284,6 +331,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     avgAdr={teamSummary.faction2.avgAdr}
                     avgHsPercent={teamSummary.faction2.avgHsPercent}
                     topMap={f2TopMapSummary}
+                    isUserTeam={currentUser?.faction === 'faction2'}
                   />
                 </div>
               </>

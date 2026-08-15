@@ -94,10 +94,22 @@ This document outlines the architecture, data flows, and module contracts of `f-
   - Private Steam Profile: $+10$ (flagged)
   - Game/VAC Bans: $+25$
 
-### 3. `src/content/shadowRoot.ts`
+### 3. `src/services/eloLevels.ts`
+- Encapsulates official CS2 FACEIT skill level brackets (Levels 1–10).
+- Calculates exact points required to rank up ($\Delta \text{Next}$), buffer to demotion ($\Delta \text{Demotion}$), and linear completion percentage.
+
+### 4. `src/services/faceitApi.ts` & `src/services/steamApi.ts`
+- **In-Flight Request Deduplication**: Utilizes internal Promise maps to guarantee that parallel requests for the same match or player share a single network call, eliminating duplicate HTTP traffic.
+- **Match History Delta Tracking**: Extracts historical Elo data across past 50 matches to compute accurate per-game Elo gains/losses ($\pm 25$).
+
+### 5. `src/content/shadowRoot.ts`
 - Implements `CSSStyleSheet.replaceSync()` and `root.adoptedStyleSheets = [sheet]`.
 - Shares a single compiled stylesheet instance across all Shadow DOM roots, minimizing V8 memory usage and ensuring 0ms stylesheet construction.
 
-### 4. `src/content/domObserver.ts`
+### 6. `src/content/domObserver.ts`
 - Throttles DOM mutations using a 60ms buffer synchronized via `requestAnimationFrame`.
 - Seamlessly discovers FACEIT match containers and player roster items across all navigation tabs.
+
+### 7. `src/components/player/PlayerRadarChart.tsx`
+- Pure zero-dependency SVG geometry for a 5-axis player performance radar (Firepower, Damage, Precision, Winrate, Impact).
+- Uses normalized coordinate transforms $(\theta = \frac{2\pi i}{5} - \frac{\pi}{2})$ with drop-shadow glow filters.

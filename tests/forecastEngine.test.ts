@@ -165,12 +165,13 @@ describe('forecastEngine', () => {
       recentAdr: adr,
     });
 
-    it('should rank team best map as Rank 1 MUST_PICK and worst map as PERMABAN', () => {
+    it('should rank team best map as Rank 1 MUST_PICK and worst map as PERMABAN in full CS2 pool with Cache', () => {
       const f1Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f1_${i}`, 'mirage', 50, 40, 1.4, 90)); // Dominating on Mirage
       const f2Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f2_${i}`, 'nuke', 50, 40, 1.4, 90)); // Dominating on Nuke
 
       const rankings = calculateMapVetoRanking({ f1Players, f2Players });
-      expect(rankings).toHaveLength(7);
+      expect(rankings).toHaveLength(10);
+      expect(rankings.some((r) => r.mapName === 'cache')).toBe(true);
 
       const rank1 = rankings[0];
       expect(rank1.mapName).toBe('mirage');
@@ -178,11 +179,27 @@ describe('forecastEngine', () => {
       expect(rank1.recommendation).toBe('MUST_PICK');
       expect(rank1.advantageDelta).toBeGreaterThan(0);
 
-      const rank7 = rankings[6];
-      expect(rank7.mapName).toBe('nuke');
-      expect(rank7.rank).toBe(7);
-      expect(rank7.recommendation).toBe('PERMABAN');
-      expect(rank7.advantageDelta).toBeLessThan(0);
+      const worstRank = rankings[rankings.length - 1];
+      expect(worstRank.mapName).toBe('nuke');
+      expect(worstRank.rank).toBe(10);
+      expect(worstRank.recommendation).toBe('PERMABAN');
+      expect(worstRank.advantageDelta).toBeLessThan(0);
+    });
+
+    it('should support dynamic availableMaps filter including cache', () => {
+      const f1Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f1_${i}`, 'cache', 50, 40, 1.4, 90));
+      const f2Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f2_${i}`, 'dust2', 50, 40, 1.4, 90));
+
+      const rankings = calculateMapVetoRanking({
+        f1Players,
+        f2Players,
+        availableMaps: ['de_cache', 'de_dust2', 'de_mirage'],
+      });
+
+      expect(rankings).toHaveLength(3);
+      expect(rankings[0].mapName).toBe('cache');
+      expect(rankings[0].rank).toBe(1);
+      expect(rankings[0].recommendation).toBe('MUST_PICK');
     });
   });
 });

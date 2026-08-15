@@ -3,12 +3,15 @@ import { LobbyAnalysisPayload } from '../types/messages';
 import { LobbySummaryBar } from './LobbySummaryBar';
 import { VetoMatrix } from './VetoMatrix';
 
+import { DetectedCurrentUser } from '../services/currentUserDetector';
+
 interface LobbyWidgetProps {
   payload: LobbyAnalysisPayload;
   isLoading: boolean;
   onRefresh: () => void;
   showVetoMatrix?: boolean;
   onToggleVetoMatrix?: () => void;
+  currentUser?: DetectedCurrentUser;
 }
 
 export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
@@ -17,6 +20,7 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
   onRefresh,
   showVetoMatrix: controlledVetoMatrix,
   onToggleVetoMatrix: controlledToggleVeto,
+  currentUser,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const isVoting = payload.match.status === 'VOTING' || !payload.match.selected_map;
@@ -35,12 +39,14 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
         onToggleVisibility={() => setIsVisible((prev) => !prev)}
         showVetoMatrix={showVeto}
         onToggleVetoMatrix={toggleVeto}
+        currentUser={currentUser}
       />
 
       {isVisible && showVeto && (
         <VetoMatrix
           match={payload.match}
           playersStats={payload.playersStats || {}}
+          currentUser={currentUser}
         />
       )}
     </div>

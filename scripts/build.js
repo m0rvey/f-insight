@@ -28,6 +28,10 @@ async function buildExtension() {
         '@': resolve(rootDir, 'src'),
       },
     },
+    esbuild: {
+      legalComments: 'none',
+      treeShaking: true,
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: false,
@@ -35,6 +39,7 @@ async function buildExtension() {
       cssMinify: true,
       target: 'es2020',
       rollupOptions: {
+        treeshake: 'recommended',
         input: {
           popup: resolve(rootDir, 'popup.html'),
         },
@@ -57,6 +62,13 @@ async function buildExtension() {
         '@': resolve(rootDir, 'src'),
       },
     },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+    },
+    esbuild: {
+      legalComments: 'none',
+      treeShaking: true,
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: false,
@@ -68,6 +80,7 @@ async function buildExtension() {
         fileName: () => 'background.js',
       },
       rollupOptions: {
+        treeshake: 'recommended',
         output: {
           inlineDynamicImports: true,
           entryFileNames: 'background.js',
@@ -90,6 +103,10 @@ async function buildExtension() {
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
     },
+    esbuild: {
+      legalComments: 'none',
+      treeShaking: true,
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: false,
@@ -103,6 +120,7 @@ async function buildExtension() {
         fileName: () => 'content.js',
       },
       rollupOptions: {
+        treeshake: 'recommended',
         output: {
           inlineDynamicImports: true,
           entryFileNames: 'content.js',

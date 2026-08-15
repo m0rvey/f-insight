@@ -9,7 +9,11 @@ export interface ExtensionSettings {
   autoReadyUp: boolean;
   autoAcceptParty: boolean;
   autoCopyConnectIp: boolean;
-  playReadySound: boolean;
+  autoDismissAfk: boolean;
+  autoContinueQueue: boolean;
+  autoDismissCaptain: boolean;
+  autoHideClientBanner: boolean;
+  autoVetoMaps: boolean;
   // Tactical Performance Analytics
   showFcrRating: boolean;
   showFormIndicators: boolean;
@@ -26,7 +30,11 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   autoReadyUp: true,
   autoAcceptParty: true,
   autoCopyConnectIp: true,
-  playReadySound: true,
+  autoDismissAfk: true,
+  autoContinueQueue: true,
+  autoDismissCaptain: true,
+  autoHideClientBanner: true,
+  autoVetoMaps: false,
   // Tactical Analytics defaults
   showFcrRating: true,
   showFormIndicators: true,

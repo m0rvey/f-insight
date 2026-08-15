@@ -351,8 +351,10 @@ export interface MapVetoRankItem {
 export function calculateMapVetoRanking(params: {
   f1Players: FaceitPlayerFullStats[];
   f2Players: FaceitPlayerFullStats[];
+  availableMaps?: string[];
+  userFaction?: 'faction1' | 'faction2';
 }): MapVetoRankItem[] {
-  const ACTIVE_DUTY_MAPS = [
+  const DEFAULT_CS2_MAPS = [
     'mirage',
     'inferno',
     'nuke',
@@ -360,11 +362,33 @@ export function calculateMapVetoRanking(params: {
     'anubis',
     'dust2',
     'vertigo',
+    'cache',
+    'train',
+    'overpass',
   ];
 
-  const items: MapVetoRankItem[] = ACTIVE_DUTY_MAPS.map((mapName) => {
+  const mapPool = params.availableMaps && params.availableMaps.length > 0
+    ? Array.from(new Set(params.availableMaps.map((m) => m.replace(/^cs2_/, '').replace(/^csgo_/, '').replace(/^de_/, '').toLowerCase().trim()).filter(Boolean)))
+    : DEFAULT_CS2_MAPS;
+
+  const getPlayerMapStat = (p: FaceitPlayerFullStats, name: string) => {
+    if (!p.mapStats) return undefined;
+    if (p.mapStats[name]) return p.mapStats[name];
+    if (p.mapStats[`de_${name}`]) return p.mapStats[`de_${name}`];
+    if (p.mapStats[`cs2_${name}`]) return p.mapStats[`cs2_${name}`];
+    for (const [k, v] of Object.entries(p.mapStats)) {
+      if (k.toLowerCase().replace(/^(cs2_|csgo_|de_)/, '') === name) {
+        return v;
+      }
+    }
+    return undefined;
+  };
+
+  const isF2Perspective = params.userFaction === 'faction2';
+
+  const items: MapVetoRankItem[] = mapPool.map((mapName) => {
     // Faction 1
-    const f1Stats = params.f1Players.map((p) => p.mapStats?.[mapName]).filter((m): m is NonNullable<typeof m> => Boolean(m));
+    const f1Stats = params.f1Players.map((p) => getPlayerMapStat(p, mapName)).filter((m): m is NonNullable<typeof m> => Boolean(m));
     const f1Matches = f1Stats.reduce((acc, m) => acc + (m.matches || 0), 0);
     const f1Wins = f1Stats.reduce((acc, m) => acc + (m.wins || 0), 0);
     const f1WinRate = f1Matches > 0 ? Math.round((f1Wins / f1Matches) * 100) : 50;
@@ -374,7 +398,7 @@ export function calculateMapVetoRanking(params: {
     const f1Power = f1BayesWr * (1 + (f1AvgKd - 1.0) / 2) * (1 + (f1AvgAdr - 75) / 200);
 
     // Faction 2
-    const f2Stats = params.f2Players.map((p) => p.mapStats?.[mapName]).filter((m): m is NonNullable<typeof m> => Boolean(m));
+    const f2Stats = params.f2Players.map((p) => getPlayerMapStat(p, mapName)).filter((m): m is NonNullable<typeof m> => Boolean(m));
     const f2Matches = f2Stats.reduce((acc, m) => acc + (m.matches || 0), 0);
     const f2Wins = f2Stats.reduce((acc, m) => acc + (m.wins || 0), 0);
     const f2WinRate = f2Matches > 0 ? Math.round((f2Wins / f2Matches) * 100) : 50;
@@ -383,7 +407,9 @@ export function calculateMapVetoRanking(params: {
     const f2BayesWr = parseFloat((((f2Wins + 2.5) / (f2Matches + 5)) * 100).toFixed(1));
     const f2Power = f2BayesWr * (1 + (f2AvgKd - 1.0) / 2) * (1 + (f2AvgAdr - 75) / 200);
 
-    const advantageDelta = parseFloat((f1Power - f2Power).toFixed(1));
+    const advantageDelta = isF2Perspective
+      ? parseFloat((f2Power - f1Power).toFixed(1))
+      : parseFloat((f1Power - f2Power).toFixed(1));
 
     return {
       mapName,

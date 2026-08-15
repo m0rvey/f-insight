@@ -92,6 +92,22 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                     COLD / TILT
                   </span>
                 )}
+                {risk && (
+                  <span
+                    className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                      risk.score >= 70
+                        ? 'bg-red-500/25 text-red-300 border-red-500/50 shadow-sm animate-pulse'
+                        : risk.score >= 40
+                        ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+                        : risk.score >= 25
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    }`}
+                  >
+                    <ShieldAlert className="w-3 h-3" />
+                    Smurf Risk: {risk.score}%
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-400 flex-wrap">

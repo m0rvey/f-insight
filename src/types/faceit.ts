@@ -63,7 +63,6 @@ export interface FaceitMatchDetails {
     };
   };
   selected_map?: string;
-  server_location?: string;
   server_ip?: string;
 }
 
@@ -90,6 +89,8 @@ export interface PlayerRecentMatch {
   kd: number;
   hsPercent: number;
   adr?: number;
+  elo?: number;
+  eloDiff?: number;
 }
 
 export type PlayerFormStatus = 'HOT' | 'COLD' | 'STABLE';

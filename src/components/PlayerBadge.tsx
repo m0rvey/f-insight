@@ -18,6 +18,7 @@ interface PlayerBadgeProps {
   risk?: RiskAnalysisResult;
   premadeGroup?: PremadeGroup;
   selectedMap?: string;
+  isCurrentUser?: boolean;
   onOpenDetails: (playerId: string) => void;
 }
 
@@ -28,6 +29,7 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
   risk,
   premadeGroup,
   selectedMap,
+  isCurrentUser,
   onOpenDetails,
 }) => {
   if (!stats) {
@@ -52,8 +54,12 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
         e.preventDefault();
         onOpenDetails(playerId);
       }}
-      className="w-full mt-2 p-2 rounded-xl bg-[#141418]/95 hover:bg-[#1A1A20] border border-white/10 hover:border-faceit-orange/60 text-white font-sans transition-all duration-150 cursor-pointer shadow-md hover:shadow-glow-orange group active:scale-[0.99] select-none"
-      title="Click to view deep player performance, match history, and risk analysis"
+      className={`w-full mt-2 p-2 rounded-xl border text-white font-sans transition-all duration-150 cursor-pointer shadow-md group active:scale-[0.99] select-none ${
+        isCurrentUser
+          ? 'bg-cyan-950/25 hover:bg-cyan-950/40 border-cyan-500/40 hover:border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+          : 'bg-[#141418]/95 hover:bg-[#1A1A20] border-white/10 hover:border-faceit-orange/60 hover:shadow-glow-orange'
+      }`}
+      title={isCurrentUser ? 'Your Profile (Click to view full details)' : 'Click to view deep player performance, match history, and risk analysis'}
     >
       {/* Top Row: Key Performance Metrics */}
       <div className="grid grid-cols-4 gap-1 text-center font-mono">
@@ -127,6 +133,13 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
             </span>
           )}
 
+          {/* Current User Indicator */}
+          {isCurrentUser && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-cyan-500/25 text-cyan-300 border border-cyan-400/60 font-black shadow-sm tracking-wider">
+              YOU
+            </span>
+          )}
+
           {/* Form Status */}
           {stats.formStatus === 'HOT' && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-glow-orange animate-pulse">
@@ -168,27 +181,42 @@ export const PlayerBadge: React.FC<PlayerBadgeProps> = ({
             </span>
           )}
 
-          {/* Risk Alert */}
-          {risk && risk.score >= 35 && (
+          {/* Smurf Risk Score */}
+          {risk ? (
             <span
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded border"
-              style={{
-                backgroundColor: `${risk.color}20`,
-                color: risk.color,
-                borderColor: `${risk.color}60`,
-              }}
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded border ${
+                risk.score >= 70
+                  ? 'bg-red-500/25 text-red-300 border-red-500/50 shadow-sm animate-pulse'
+                  : risk.score >= 40
+                  ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+                  : risk.score >= 25
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+              }`}
+              title={`Smurf Risk Assessment: ${risk.score}% (${risk.level})`}
             >
               <ShieldAlert className="w-2.5 h-2.5" />
-              <span>{risk.score}%</span>
+              <span>Smurf: {risk.score}%</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+              <span>Smurf: 0%</span>
             </span>
           )}
 
-          {/* Steam Hours */}
-          {steam && !steam.isPrivate && steam.playtime?.cs2HoursTotal && (
+          {/* Steam Hours or Hidden Account */}
+          {steam && !steam.isPrivate && steam.playtime?.cs2HoursTotal ? (
             <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
               {steam.playtime.cs2HoursTotal}h
             </span>
-          )}
+          ) : steam?.isPrivate ? (
+            <span
+              className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
+              title="Steam profile is hidden/private"
+            >
+              Hidden account
+            </span>
+          ) : null}
         </div>
 
         <a

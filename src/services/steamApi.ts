@@ -1,11 +1,26 @@
 import { SteamFullData, SteamPlayerSummary, SteamBanStatus } from '../types/steam';
 
 export class SteamApiService {
+  private inFlightSteam = new Map<string, Promise<SteamFullData>>();
+
   async getPlayerFullData(steamId64: string): Promise<SteamFullData> {
     if (!steamId64) {
       return { isPrivate: true, fetchedAt: Date.now() };
     }
 
+    if (this.inFlightSteam.has(steamId64)) {
+      return this.inFlightSteam.get(steamId64)!;
+    }
+
+    const promise = this.fetchSteamDataInternal(steamId64).finally(() => {
+      this.inFlightSteam.delete(steamId64);
+    });
+
+    this.inFlightSteam.set(steamId64, promise);
+    return promise;
+  }
+
+  private async fetchSteamDataInternal(steamId64: string): Promise<SteamFullData> {
     try {
       const res = await fetch(`https://steamcommunity.com/profiles/${steamId64}/?xml=1`);
       if (res.ok) {

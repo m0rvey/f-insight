@@ -6,62 +6,6 @@ import {
 } from '../types/faceit';
 import { evaluatePlayerForm } from './forecastEngine';
 
-const LOCATION_NAME_MAP: Record<string, string> = {
-  // Russian & CIS Server Locations
-  moscow: 'Russia (Moscow)',
-  russia: 'Russia (Moscow)',
-  mow: 'Russia (Moscow)',
-  spb: 'Russia (Saint Petersburg)',
-  saint_petersburg: 'Russia (Saint Petersburg)',
-  petersburg: 'Russia (Saint Petersburg)',
-  led: 'Russia (Saint Petersburg)',
-  ekaterinburg: 'Russia (Yekaterinburg)',
-  yekaterinburg: 'Russia (Yekaterinburg)',
-  svx: 'Russia (Yekaterinburg)',
-  novosibirsk: 'Russia (Novosibirsk)',
-  ovb: 'Russia (Novosibirsk)',
-  khabarovsk: 'Russia (Khabarovsk)',
-  khv: 'Russia (Khabarovsk)',
-  vladivostok: 'Russia (Vladivostok)',
-  vvo: 'Russia (Vladivostok)',
-  kazakhstan: 'Kazakhstan (Almaty)',
-  almaty: 'Kazakhstan (Almaty)',
-  ala: 'Kazakhstan (Almaty)',
-  astana: 'Kazakhstan (Astana)',
-  tse: 'Kazakhstan (Astana)',
-  minsk: 'Belarus (Minsk)',
-  belarus: 'Belarus (Minsk)',
-  msq: 'Belarus (Minsk)',
-  kyiv: 'Ukraine (Kyiv)',
-  kiev: 'Ukraine (Kyiv)',
-  ukraine: 'Ukraine (Kyiv)',
-  iev: 'Ukraine (Kyiv)',
-  // European Server Locations
-  germany: 'Germany (Frankfurt)',
-  frankfurt: 'Germany (Frankfurt)',
-  finland: 'Finland (Helsinki)',
-  helsinki: 'Finland (Helsinki)',
-  sweden: 'Sweden (Stockholm)',
-  stockholm: 'Sweden (Stockholm)',
-  netherlands: 'Netherlands (Amsterdam)',
-  amsterdam: 'Netherlands (Amsterdam)',
-  uk: 'United Kingdom (London)',
-  london: 'United Kingdom (London)',
-  france: 'France (Paris)',
-  paris: 'France (Paris)',
-  poland: 'Poland (Warsaw)',
-  warsaw: 'Poland (Warsaw)',
-  turkey: 'Turkey (Istanbul)',
-  istanbul: 'Turkey (Istanbul)',
-  // Americas & APAC
-  dallas: 'US (Dallas)',
-  chicago: 'US (Chicago)',
-  denver: 'US (Denver)',
-  singapore: 'Singapore',
-  brazil: 'Brazil (São Paulo)',
-  sao_paulo: 'Brazil (São Paulo)',
-};
-
 interface RawPlayerPayload {
   nickname?: string;
   avatar?: string;
@@ -81,7 +25,24 @@ interface RawStatsPayload {
 }
 
 export class FaceitApiService {
+  private inFlightMatch = new Map<string, Promise<FaceitMatchDetails | null>>();
+  private inFlightPlayer = new Map<string, Promise<FaceitPlayerFullStats | null>>();
+
   async getMatchDetails(matchId: string): Promise<FaceitMatchDetails | null> {
+    if (!matchId) return null;
+    if (this.inFlightMatch.has(matchId)) {
+      return this.inFlightMatch.get(matchId)!;
+    }
+
+    const promise = this.fetchMatchDetailsInternal(matchId).finally(() => {
+      this.inFlightMatch.delete(matchId);
+    });
+
+    this.inFlightMatch.set(matchId, promise);
+    return promise;
+  }
+
+  private async fetchMatchDetailsInternal(matchId: string): Promise<FaceitMatchDetails | null> {
     try {
       const res = await fetch(`https://api.faceit.com/match/v2/match/${matchId}`, {
         headers: { Accept: 'application/json' },
@@ -102,6 +63,21 @@ export class FaceitApiService {
   }
 
   async getPlayerStats(playerId: string, fallbackNickname?: string): Promise<FaceitPlayerFullStats | null> {
+    if (!playerId) return null;
+    const cacheKey = `${playerId}_${fallbackNickname || ''}`;
+    if (this.inFlightPlayer.has(cacheKey)) {
+      return this.inFlightPlayer.get(cacheKey)!;
+    }
+
+    const promise = this.fetchPlayerStatsInternal(playerId, fallbackNickname).finally(() => {
+      this.inFlightPlayer.delete(cacheKey);
+    });
+
+    this.inFlightPlayer.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async fetchPlayerStatsInternal(playerId: string, fallbackNickname?: string): Promise<FaceitPlayerFullStats | null> {
     try {
       const [userRes, statsRes, historyRes, csgoStatsRes] = await Promise.allSettled([
         fetch(`https://api.faceit.com/users/v1/users/${playerId}`, { headers: { Accept: 'application/json' } }),
@@ -151,19 +127,6 @@ export class FaceitApiService {
       ? mapPicks[0]
       : p.voting?.map?.entities?.find((e: any) => e.status === 'pick')?.name;
 
-    // Extract raw server location name from voting or match data
-    const locationRaw = p.voting?.location?.pick?.[0] ||
-      p.voting?.location?.entities?.find((e: any) => e.status === 'pick')?.name ||
-      p.entity_custom_location ||
-      p.summary?.server_location ||
-      p.summary?.location ||
-      p.location ||
-      '';
-
-    const formattedLocation = locationRaw
-      ? LOCATION_NAME_MAP[locationRaw.toLowerCase()] || locationRaw.charAt(0).toUpperCase() + locationRaw.slice(1)
-      : undefined;
-
     // Only treat as server_ip if it is a real IP:port or hostname:port
     const rawIp = p.configured_server_ip || p.server_ip;
     const serverIp = rawIp && /^[a-zA-Z0-9.\-]+:\d+$/.test(rawIp) ? rawIp : undefined;
@@ -207,7 +170,6 @@ export class FaceitApiService {
       },
       voting: p.voting,
       selected_map: selectedMap,
-      server_location: formattedLocation,
       server_ip: serverIp,
     };
   }
@@ -316,6 +278,22 @@ export class FaceitApiService {
           historyMapStats[mapName].adrSum += adr;
         }
 
+        const rawMatchElo = item.elo ? parseInt(item.elo.toString().replace(/,/g, ''), 10) : (item.i15 ? parseInt(item.i15, 10) : undefined);
+        let eloDiff: number | undefined = undefined;
+        if (i < history.length - 1 && rawMatchElo) {
+          const prevItem = history[i + 1];
+          const prevElo = prevItem?.elo ? parseInt(prevItem.elo.toString().replace(/,/g, ''), 10) : (prevItem?.i15 ? parseInt(prevItem.i15, 10) : undefined);
+          if (typeof prevElo === 'number' && !isNaN(prevElo)) {
+            const diff = rawMatchElo - prevElo;
+            if (Math.abs(diff) <= 60) {
+              eloDiff = diff;
+            }
+          }
+        }
+        if (eloDiff === undefined) {
+          eloDiff = isWin ? 25 : -25;
+        }
+
         recentMatches.push({
           matchId: item.matchId || item.i0 || `match-${i}`,
           playedAt: item.date || item.created_at || 0,
@@ -327,6 +305,8 @@ export class FaceitApiService {
           kd: parseFloat(item.c2 || item.stats?.['K/D Ratio'] || (deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2))),
           hsPercent: parseFloat(item.c4 || item.stats?.['Headshots %'] || '0'),
           adr,
+          elo: rawMatchElo,
+          eloDiff,
         });
       }
     }
