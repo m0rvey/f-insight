@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FaceitMatchDetails, FaceitPlayerFullStats } from '../types/faceit';
 import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { DetectedCurrentUser } from '../services/currentUserDetector';
@@ -18,81 +18,83 @@ interface VetoMatrixProps {
   match: FaceitMatchDetails;
   playersStats: Record<string, FaceitPlayerFullStats>;
   currentUser?: DetectedCurrentUser;
+  rankedMaps?: MapVetoRankItem[];
 }
 
-export const VetoMatrix: React.FC<VetoMatrixProps> = ({
+export const VetoMatrix = React.memo<VetoMatrixProps>(({
   match,
   playersStats = {},
   currentUser,
+  rankedMaps: propsRankedMaps,
 }) => {
-  if (Object.keys(playersStats).length < 2) {
-    return (
-      <div className="w-full mb-4 font-sans text-white animate-pulse">
-        <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-card bg-[#18181C]/90 h-64 flex items-center justify-center flex-col gap-3 text-zinc-500 font-mono text-xs shadow-inner">
-          <Layers className="w-6 h-6 animate-pulse text-purple-400" />
-          <span>Building Map Veto Intelligence...</span>
-        </div>
-      </div>
-    );
-  }
-
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
 
-  const getPlayer = (r: { player_id?: string; id?: string; nickname?: string }) => {
-    const id = r.player_id || r.id || '';
-    if (id && playersStats[id]) return playersStats[id];
-    if (r.nickname) {
-      const found = Object.values(playersStats).find(
-        (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
-      );
-      if (found) return found;
-    }
-    return undefined;
-  };
+  const { f1Players, f2Players } = useMemo(() => {
+    const getPlayer = (r: { player_id?: string; id?: string; nickname?: string }) => {
+      const id = r.player_id || r.id || '';
+      if (id && playersStats[id]) return playersStats[id];
+      if (r.nickname) {
+        const found = Object.values(playersStats).find(
+          (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
+        );
+        if (found) return found;
+      }
+      return undefined;
+    };
 
-  const f1Players = (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
-  const f2Players = (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
-
-  // Map voting entities for live veto status & map pool
-  const votingEntities = match.voting?.map?.entities || [];
-  const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
+    return {
+      f1Players: (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p)),
+      f2Players: (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p)),
+    };
+  }, [f1.roster, f2.roster, playersStats]);
 
   const userFaction = currentUser?.faction;
   const isF2 = userFaction === 'faction2';
 
   // Calculate 100% accurate Bayesian sample-weighted rankings relative to user's perspective
-  const rankedMaps = calculateMapVetoRanking({
-    f1Players,
-    f2Players,
-    availableMaps,
-    userFaction,
-  });
+  const rankedMaps = useMemo(() => {
+    if (propsRankedMaps) return propsRankedMaps;
+    const availableMaps = (match.voting?.map?.entities || [])
+      .map((e) => e.name || (e as any).guid || '')
+      .filter(Boolean);
+    return calculateMapVetoRanking({
+      f1Players,
+      f2Players,
+      availableMaps,
+      userFaction,
+    });
+  }, [propsRankedMaps, match.voting?.map?.entities, f1Players, f2Players, userFaction]);
 
-  const mapStatusMap = new Map<string, string>();
-  for (const entity of votingEntities) {
-    const cleanName = (entity.name || '').replace('de_', '').toLowerCase();
-    if (cleanName) {
-      mapStatusMap.set(cleanName, (entity as any).status || 'remaining');
+  const mapStatusMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entity of match.voting?.map?.entities || []) {
+      const cleanName = (entity.name || '').replace(/^(de_|cs2_|csgo_)/, '').toLowerCase();
+      if (cleanName) {
+        map.set(cleanName, (entity as any).status || 'remaining');
+      }
     }
-  }
+    return map;
+  }, [match.voting?.map?.entities]);
 
   // Best Pick & Best Ban for Your Team (or Faction 1)
-  const bestPick = rankedMaps.find((m) => {
-    const status = mapStatusMap.get(m.mapName);
-    return status !== 'drop';
-  }) || rankedMaps[0];
-
-  const bestBan = [...rankedMaps].reverse().find((m) => {
-    const status = mapStatusMap.get(m.mapName);
-    return status !== 'drop';
-  }) || rankedMaps[rankedMaps.length - 1];
+  const { bestPick, bestBan } = useMemo(() => {
+    const hasRemainingMaps = rankedMaps.some((m) => mapStatusMap.get(m.mapName) !== 'drop');
+    return {
+      bestPick: hasRemainingMaps
+        ? rankedMaps.find((m) => mapStatusMap.get(m.mapName) !== 'drop')
+        : undefined,
+      bestBan: hasRemainingMaps
+        ? [...rankedMaps].reverse().find((m) => mapStatusMap.get(m.mapName) !== 'drop')
+        : undefined,
+    };
+  }, [rankedMaps, mapStatusMap]);
 
   // Personal Comfort Map for the Current User
   const userPlayer = currentUser?.playerId ? playersStats[currentUser.playerId] : undefined;
-  let personalComfortMap: { mapName: string; winRate: number; kd: number; matches: number } | undefined;
 
-  if (userPlayer && userPlayer.mapStats) {
+  const personalComfortMap = useMemo(() => {
+    if (!userPlayer || !userPlayer.mapStats) return undefined;
     const activeMapStats = Object.values(userPlayer.mapStats).filter((m) => {
       const status = mapStatusMap.get(m.mapName);
       return status !== 'drop';
@@ -103,7 +105,7 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({
         (a, b) => (b.wins * 3 + b.winRate + b.kd * 25) - (a.wins * 3 + a.winRate + a.kd * 25)
       );
       if (sorted[0] && sorted[0].matches >= 3) {
-        personalComfortMap = {
+        return {
           mapName: sorted[0].mapName,
           winRate: sorted[0].winRate,
           kd: sorted[0].kd,
@@ -111,12 +113,24 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({
         };
       }
     }
-  }
+    return undefined;
+  }, [userPlayer, mapStatusMap]);
 
-  const selectedMapClean = match.selected_map?.replace('de_', '').toLowerCase();
+  const selectedMapClean = match.selected_map?.replace(/^(cs2_|csgo_|de_)/, '').toLowerCase();
 
   const myTeamLabel = userFaction ? 'Your Team' : f1.name;
   const enemyTeamLabel = userFaction ? 'Enemy Team' : f2.name;
+
+  if (Object.keys(playersStats).length < 2) {
+    return (
+      <div className="w-full mb-4 font-sans text-white animate-pulse">
+        <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-card bg-[#18181C]/90 h-64 flex items-center justify-center flex-col gap-3 text-zinc-500 font-mono text-xs shadow-inner">
+          <Layers className="w-6 h-6 animate-pulse text-purple-400" />
+          <span>Building Map Veto Intelligence...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full mb-4 font-sans text-white animate-fade-in selection:bg-faceit-orange selection:text-black">
@@ -158,19 +172,27 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({
                 <span className="text-[10px] text-emerald-400 font-extrabold uppercase tracking-wider block">
                   Priority 1: Best Pick ({myTeamLabel})
                 </span>
-                <span className="text-sm font-black text-white capitalize font-mono">
-                  {bestPick.mapName}
+                <span className={`text-sm font-black capitalize font-mono ${bestPick ? 'text-white' : 'text-zinc-500'}`}>
+                  {bestPick ? bestPick.mapName : 'No maps remaining'}
                 </span>
               </div>
             </div>
-            <div className="text-right font-mono">
-              <span className="text-xs font-black text-emerald-400 block">
-                +{Math.abs(bestPick.advantageDelta)}% Adv
-              </span>
-              <span className="text-[10px] text-zinc-400">
-                {isF2 ? bestPick.f2WinRate : bestPick.f1WinRate}% vs {isF2 ? bestPick.f1WinRate : bestPick.f2WinRate}% WR
-              </span>
-            </div>
+            {bestPick && (
+              <div className="text-right font-mono">
+                <span
+                  className={`text-xs font-black block ${
+                    bestPick.advantageDelta >= 0 ? 'text-emerald-400' : 'text-amber-400'
+                  }`}
+                >
+                  {bestPick.advantageDelta >= 0
+                    ? `+${bestPick.advantageDelta}% Adv`
+                    : `-${Math.abs(bestPick.advantageDelta)}% Disadv`}
+                </span>
+                <span className="text-[10px] text-zinc-400">
+                  {isF2 ? bestPick.f2WinRate : bestPick.f1WinRate}% vs {isF2 ? bestPick.f1WinRate : bestPick.f2WinRate}% WR
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Recommended Ban */}
@@ -183,19 +205,27 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({
                 <span className="text-[10px] text-red-400 font-extrabold uppercase tracking-wider block">
                   Priority 1: Must Ban ({enemyTeamLabel})
                 </span>
-                <span className="text-sm font-black text-white capitalize font-mono">
-                  {bestBan.mapName}
+                <span className={`text-sm font-black capitalize font-mono ${bestBan ? 'text-white' : 'text-zinc-500'}`}>
+                  {bestBan ? bestBan.mapName : 'No maps remaining'}
                 </span>
               </div>
             </div>
-            <div className="text-right font-mono">
-              <span className="text-xs font-black text-red-400 block">
-                -{Math.abs(bestBan.advantageDelta)}% Adv
-              </span>
-              <span className="text-[10px] text-zinc-400">
-                {isF2 ? bestBan.f2WinRate : bestBan.f1WinRate}% vs {isF2 ? bestBan.f1WinRate : bestBan.f2WinRate}% WR
-              </span>
-            </div>
+            {bestBan && (
+              <div className="text-right font-mono">
+                <span
+                  className={`text-xs font-black block ${
+                    bestBan.advantageDelta >= 0 ? 'text-red-400' : 'text-amber-400'
+                  }`}
+                >
+                  {bestBan.advantageDelta >= 0
+                    ? `+${bestBan.advantageDelta}% Adv`
+                    : `-${Math.abs(bestBan.advantageDelta)}% Disadv`}
+                </span>
+                <span className="text-[10px] text-zinc-400">
+                  {isF2 ? bestBan.f2WinRate : bestBan.f1WinRate}% vs {isF2 ? bestBan.f1WinRate : bestBan.f2WinRate}% WR
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Personal Comfort Pick */}
@@ -243,7 +273,7 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({
                     ? 'opacity-50 bg-red-950/10 border-red-900/30 grayscale-[50%]'
                     : isSelected
                     ? 'bg-faceit-orange/15 border-faceit-orange shadow-[0_0_15px_rgba(255,85,0,0.15)] scale-[1.02] z-10'
-                    : 'bg-[#1a1a20]/80 border-white/5 hover:border-white/20 hover:bg-[#1a1a20]'
+                    : 'bg-faceit-card/80 border-white/5 hover:border-white/20 hover:bg-faceit-card-hover'
                 }`}
               >
                 {/* Header: Map Name & Rank */}
@@ -339,4 +369,5 @@ export const VetoMatrix: React.FC<VetoMatrixProps> = ({
       </div>
     </div>
   );
-};
+});
+VetoMatrix.displayName = "VetoMatrix";

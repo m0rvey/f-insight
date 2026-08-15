@@ -50,8 +50,8 @@ export function calculateTeamFcr(
 
   const powers = teamPlayers.map((p) => {
     const eloWeight = Math.max(500, p.elo || 1000) / 1000;
-    const kdWeight = Math.max(0.4, p.overallKd || 1.0);
-    const adrWeight = 1 + ((p.overallAdr || 75) - 75) / 150;
+    const kdWeight = Math.max(0.4, p.last30Kd ?? p.overallKd ?? 1.0);
+    const adrWeight = 1 + ((p.last30Adr ?? p.overallAdr ?? 75) - 75) / 150;
     const power = eloWeight * kdWeight * Math.max(0.6, adrWeight);
     return { id: p.playerId, power };
   });
@@ -71,8 +71,8 @@ export function calculateTeamFcr(
  */
 export function evaluatePlayerForm(
   recentMatches: PlayerRecentMatch[],
-  overallKd: number,
-  overallAdr: number
+  overallKd?: number,
+  overallAdr?: number
 ): { formStatus: PlayerFormStatus; recentKd: number; recentAdr: number } {
   if (!recentMatches || recentMatches.length < 2) {
     return {
@@ -85,7 +85,10 @@ export function evaluatePlayerForm(
   const last5 = recentMatches.slice(0, 5);
   const totalKills = last5.reduce((sum, m) => sum + (m.kills || 0), 0);
   const totalDeaths = last5.reduce((sum, m) => sum + (m.deaths || 0), 0);
-  const recentKd = totalDeaths > 0 ? parseFloat((totalKills / totalDeaths).toFixed(2)) : parseFloat(totalKills.toFixed(2));
+  // 0 deaths (or 0/0) is a degenerate sample — fall back to the lifetime baseline
+  const recentKd = totalDeaths > 0
+    ? parseFloat((totalKills / totalDeaths).toFixed(2))
+    : parseFloat((overallKd || 1.0).toFixed(2));
 
   const validAdrs = last5.map((m) => m.adr).filter((a): a is number => a !== undefined && a > 0);
   const recentAdr = validAdrs.length > 0
@@ -195,8 +198,19 @@ export function calculateAdvancedMatchPrediction(params: {
   // Stack shift: up to ±8%
   const premadeDelta = Math.max(-0.08, Math.min(0.08, (f1MaxParty - f2MaxParty) * 0.02));
 
+  // High risk / smurf count
+  const f1HighRisk = f1Players.filter((p) => {
+    const lvl = riskAnalysis[p.playerId]?.level;
+    return lvl === 'HIGH' || lvl === 'CRITICAL';
+  }).length;
+  const f2HighRisk = f2Players.filter((p) => {
+    const lvl = riskAnalysis[p.playerId]?.level;
+    return lvl === 'HIGH' || lvl === 'CRITICAL';
+  }).length;
+
   // 5. Final Adjusted Win Chances
-  const rawWinF1 = baseWinProbF1 + mapDelta + momentumDelta + premadeDelta;
+  const riskDelta = Math.max(-0.06, Math.min(0.06, (f1HighRisk - f2HighRisk) * 0.02));
+  const rawWinF1 = baseWinProbF1 + mapDelta + momentumDelta + premadeDelta + riskDelta;
   const clampedWinF1 = Math.max(0.06, Math.min(0.94, rawWinF1));
   const winChanceF1 = Math.round(clampedWinF1 * 100);
   const winChanceF2 = 100 - winChanceF1;
@@ -255,6 +269,14 @@ export function calculateAdvancedMatchPrediction(params: {
     narratives.push(`Team 2 has ${f2MaxParty}-stack coordination`);
   }
 
+  if (Math.abs(riskDelta) >= 0.04 && f1HighRisk + f2HighRisk > 0) {
+    if (f1HighRisk > f2HighRisk) {
+      narratives.push(`Team 1 likely carries flagged accounts (${f1HighRisk} risk flagged)`);
+    } else if (f2HighRisk > f1HighRisk) {
+      narratives.push(`Team 2 likely carries flagged accounts (${f2HighRisk} risk flagged)`);
+    }
+  }
+
   const keyAdvantageText = narratives.length > 0
     ? narratives.join(' • ')
     : 'Evenly matched teams with balanced firepower & map proficiency';
@@ -265,7 +287,7 @@ export function calculateAdvancedMatchPrediction(params: {
     let topScore = -1;
     for (const p of players) {
       const fcr = fcrMap[p.playerId] || 20;
-      const score = fcr * 1.5 + (p.overallKd || 1.0) * 10;
+      const score = fcr * 1.5 + (p.last30Kd ?? p.overallKd ?? 1.0) * 10;
       if (score > topScore) {
         topScore = score;
         topPlayer = p;
@@ -275,7 +297,7 @@ export function calculateAdvancedMatchPrediction(params: {
       ? {
           nickname: topPlayer.nickname,
           fcr: fcrMap[topPlayer.playerId] || 20,
-          kd: topPlayer.overallKd || 1.0,
+          kd: topPlayer.last30Kd ?? topPlayer.overallKd ?? 1.0,
           elo: topPlayer.elo || 1000,
         }
       : undefined;
@@ -283,16 +305,6 @@ export function calculateAdvancedMatchPrediction(params: {
 
   const f1Star = findStar(f1Players, f1Fcr);
   const f2Star = findStar(f2Players, f2Fcr);
-
-  // High risk / smurf count
-  const f1HighRisk = f1Players.filter((p) => {
-    const lvl = riskAnalysis[p.playerId]?.level;
-    return lvl === 'HIGH' || lvl === 'CRITICAL';
-  }).length;
-  const f2HighRisk = f2Players.filter((p) => {
-    const lvl = riskAnalysis[p.playerId]?.level;
-    return lvl === 'HIGH' || lvl === 'CRITICAL';
-  }).length;
 
   return {
     winChanceF1,
@@ -321,6 +333,7 @@ export function calculateAdvancedMatchPrediction(params: {
       smurfRiskDelta: {
         f1HighRiskCount: f1HighRisk,
         f2HighRiskCount: f2HighRisk,
+        impactPercent: Math.round(riskDelta * 100),
       },
     },
     starMatchup: f1Star && f2Star ? { f1Star, f2Star } : undefined,

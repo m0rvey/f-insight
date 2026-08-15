@@ -31,11 +31,13 @@ export interface MapVetoPick {
   selected_by?: string;
 }
 
+export type MatchStatus = 'VOTING' | 'CONFIGURING' | 'READY' | 'ON_GOING' | 'CANCELLED' | 'FINISHED';
+
 export interface FaceitMatchDetails {
   match_id: string;
   game: string;
   region: string;
-  status: 'VOTING' | 'CONFIGURING' | 'READY' | 'ON_GOING' | 'CANCELLED' | 'FINISHED';
+  status: MatchStatus;
   configured_at?: number;
   started_at?: number;
   finished_at?: number;
@@ -87,7 +89,7 @@ export interface PlayerRecentMatch {
   kills: number;
   deaths: number;
   kd: number;
-  hsPercent: number;
+  hsPercent?: number;
   adr?: number;
   elo?: number;
   eloDiff?: number;
@@ -107,7 +109,13 @@ export interface FaceitPlayerFullStats {
   overallWinRate: number;
   overallKd: number;
   overallHsPercent: number;
-  overallAdr: number;
+  overallAdr?: number;
+  last30Kd?: number; // Sum kills / sum deaths over last 30 matches
+  last30Adr?: number; // Avg ADR over matches with real ADR data
+  last30AdrMatches?: number; // How many of the last 30 matches had ADR data
+  last30HsPercent?: number;
+  last30WinRate?: number; // 0 to 100
+  last30Matches?: number; // Actual matches used (fewer for new players)
   currentStreak: {
     type: 'W' | 'L' | 'NONE';
     count: number;
@@ -115,7 +123,6 @@ export interface FaceitPlayerFullStats {
   recentMatches: PlayerRecentMatch[];
   mapStats: Record<string, MapSpecificStats>;
   registrationDate?: string;
-  membershipType?: string;
   formStatus: PlayerFormStatus;
   recentKd: number; // Avg KD over last 5 matches
   recentAdr: number; // Avg ADR over last 5 matches

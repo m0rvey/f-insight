@@ -12,44 +12,56 @@ interface PlayerOverviewTabProps {
   risk?: RiskAnalysisResult;
 }
 
-export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, steam, risk }) => {
+export const PlayerOverviewTab = React.memo<PlayerOverviewTabProps>(({ stats, steam, risk }) => {
   const steamSummary = steam?.summary;
   const steamPlaytime = steam?.playtime;
   const steamBans = steam?.bans;
 
+  const kd30 = stats.last30Kd ?? stats.overallKd;
+  const adr30 = stats.last30Adr ?? stats.overallAdr;
+  const wr30 = stats.last30WinRate ?? (stats.overallWinRate > 0 ? stats.overallWinRate : undefined);
+
   return (
     <div className="space-y-4">
       {/* Elo Level Progress Bar */}
-      <LevelProgressBar elo={stats.elo} skillLevel={stats.skillLevel} />
+      <LevelProgressBar elo={stats.elo} />
 
       {/* Quick KPI Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
-          <div className="text-[10px] text-faceit-muted uppercase">Overall K/D</div>
-          <div className="text-xl font-bold font-mono text-zinc-100 mt-1">{stats.overallKd.toFixed(2)}</div>
+        <div className="surface-card p-3 text-center">
+          <div className="text-[10px] text-faceit-muted uppercase">K/D 30M</div>
+          <div className="text-xl font-bold font-mono text-zinc-100 mt-1">{kd30.toFixed(2)}</div>
         </div>
-        <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
-          <div className="text-[10px] text-faceit-muted uppercase">Avg ADR</div>
-          <div className="text-xl font-bold font-mono text-zinc-100 mt-1">{Math.round(stats.overallAdr)}</div>
+        <div className="surface-card p-3 text-center">
+          <div className="text-[10px] text-faceit-muted uppercase">ADR 30M</div>
+          <div className="text-xl font-bold font-mono text-zinc-100 mt-1">
+            {adr30 !== undefined ? Math.round(adr30) : <span className="text-zinc-500">—</span>}
+          </div>
         </div>
-        <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
-          <div className="text-[10px] text-faceit-muted uppercase">Win Rate</div>
-          <div className="text-xl font-bold font-mono text-zinc-100 mt-1">{stats.overallWinRate.toFixed(0)}%</div>
+        <div className="surface-card p-3 text-center">
+          <div className="text-[10px] text-faceit-muted uppercase">Win Rate 30M</div>
+          <div className="text-xl font-bold font-mono text-zinc-100 mt-1">
+            {wr30 !== undefined ? `${wr30.toFixed(0)}%` : <span className="text-zinc-500">—</span>}
+          </div>
         </div>
-        <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
+        <div className="surface-card p-3 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">FCR Impact</div>
           <div className="text-xl font-bold font-mono text-purple-400 mt-1">
-            {stats.fcrContributionPercent !== undefined ? `${stats.fcrContributionPercent}%` : '20%'}
+            {stats.fcrContributionPercent !== undefined ? `${stats.fcrContributionPercent}%` : <span className="text-zinc-500">—</span>}
           </div>
         </div>
-        <div className="bg-faceit-card rounded-xl p-3 border border-faceit-border/80 text-center">
+        <div className="surface-card p-3 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">Smurf Risk</div>
-          <div
-            className="text-xl font-bold font-mono mt-1"
-            style={{ color: risk?.color || '#10B981' }}
-          >
-            {risk?.score ?? 0}%
-          </div>
+          {risk ? (
+            <div
+              className="text-xl font-bold font-mono mt-1"
+              style={{ color: risk.color }}
+            >
+              {risk.score}%
+            </div>
+          ) : (
+            <div className="text-xl font-bold font-mono text-zinc-500 mt-1">—</div>
+          )}
         </div>
       </div>
 
@@ -96,7 +108,7 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
                 <div className="text-lg font-bold font-mono text-zinc-100 mt-0.5">
                   {Math.round(stats.recentAdr)}
                   <span className="text-xs text-faceit-muted font-sans ml-1">
-                    (vs {Math.round(stats.overallAdr)})
+                    (vs {stats.overallAdr !== undefined ? Math.round(stats.overallAdr) : '—'})
                   </span>
                 </div>
               </div>
@@ -108,7 +120,11 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-xs text-zinc-200">Steam Account</span>
-                {steam?.isPrivate ? (
+                {steam?.fetchError ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+                    <Lock className="w-3 h-3" /> Unavailable
+                  </span>
+                ) : steam?.isPrivate ? (
                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300">
                     <Lock className="w-3 h-3" /> Hidden account
                   </span>
@@ -132,26 +148,30 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
                   <Clock className="w-3 h-3" /> Hours
                 </div>
                 <div className="text-sm font-bold font-mono text-zinc-100 mt-0.5">
-                  {steamPlaytime?.cs2HoursTotal ? `${steamPlaytime.cs2HoursTotal}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
+                  {steam?.isPrivate || steam?.fetchError ? 'Hours Hidden' : !steam ? '—' : steamPlaytime?.cs2HoursTotal ? `${steamPlaytime.cs2HoursTotal}h` : '0h'}
                 </div>
               </div>
 
               <div className="bg-faceit-dark/70 rounded-lg p-2 border border-faceit-border/50">
                 <div className="text-[10px] text-faceit-muted">2 Weeks</div>
                 <div className="text-sm font-bold font-mono text-zinc-100 mt-0.5">
-                  {steamPlaytime?.cs2HoursLast2Weeks ? `${steamPlaytime.cs2HoursLast2Weeks}h` : (steam?.isPrivate ? 'Hidden' : '0h')}
+                  {steam?.isPrivate || steam?.fetchError ? 'Hours Hidden' : !steam ? '—' : steamPlaytime?.cs2HoursLast2Weeks ? `${steamPlaytime.cs2HoursLast2Weeks}h` : '0h'}
                 </div>
               </div>
 
               <div className="bg-faceit-dark/70 rounded-lg p-2 border border-faceit-border/50">
                 <div className="text-[10px] text-faceit-muted">Bans</div>
-                <div
-                  className={`text-sm font-bold font-mono mt-0.5 ${
-                    steamBans?.vacBanned || steamBans?.numberOfGameBans ? 'text-red-400' : 'text-emerald-400'
-                  }`}
-                >
-                  {steamBans?.vacBanned || (steamBans?.numberOfGameBans ?? 0) > 0 ? 'Banned' : 'Clean'}
-                </div>
+                {steamBans ? (
+                  <div
+                    className={`text-sm font-bold font-mono mt-0.5 ${
+                      steamBans.vacBanned || steamBans.numberOfGameBans ? 'text-red-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {steamBans.vacBanned || (steamBans.numberOfGameBans ?? 0) > 0 ? 'Banned' : 'Clean'}
+                  </div>
+                ) : (
+                  <div className="text-sm font-bold font-mono text-zinc-500 mt-0.5">No data</div>
+                )}
               </div>
             </div>
           </div>
@@ -159,4 +179,5 @@ export const PlayerOverviewTab: React.FC<PlayerOverviewTabProps> = ({ stats, ste
       </div>
     </div>
   );
-};
+});
+PlayerOverviewTab.displayName = "PlayerOverviewTab";

@@ -4,6 +4,7 @@ import { MessageResponse } from '../types/messages';
 import {
   Zap,
   CheckCircle2,
+  AlertTriangle,
   Sliders,
   Database,
   Trash2,
@@ -21,7 +22,7 @@ export const PopupApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'automation' | 'modules' | 'cache'>('status');
   const [settings, setSettings] = useState<ExtensionSettings>({ ...DEFAULT_SETTINGS });
   const [cacheStats, setCacheStats] = useState<{ totalEntries: number; bytesInUse: number } | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -59,6 +60,7 @@ export const PopupApp: React.FC = () => {
   };
 
   const handleSaveSettings = async (partial?: Partial<ExtensionSettings>) => {
+    const previous = settings;
     const updated = { ...settings, ...(partial || {}) };
     setSettings(updated);
 
@@ -71,10 +73,15 @@ export const PopupApp: React.FC = () => {
 
         if (res?.success) {
           showStatus('Settings saved');
+        } else {
+          setSettings(previous);
+          showStatus('Failed to save settings', 'error');
         }
       }
     } catch (err) {
       console.error('Failed to save settings:', err);
+      setSettings(previous);
+      showStatus('Failed to save settings', 'error');
     }
   };
 
@@ -90,8 +97,8 @@ export const PopupApp: React.FC = () => {
     }
   };
 
-  const showStatus = (msg: string) => {
-    setStatusMessage(msg);
+  const showStatus = (msg: string, type: 'success' | 'error' = 'success') => {
+    setStatusMessage({ type, text: msg });
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
@@ -101,8 +108,48 @@ export const PopupApp: React.FC = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const enabledCount = [
+    settings.enableRedFlags,
+    settings.enableVetoHelper,
+    settings.enablePremadeDetection,
+    settings.enableFloatingControls,
+    settings.compactMode,
+    settings.showFcrRating,
+    settings.showFormIndicators,
+    settings.autoReadyUp,
+    settings.autoAcceptParty,
+    settings.autoCopyConnectIp,
+    settings.autoDismissAfk,
+    settings.autoContinueQueue,
+    settings.autoDismissCaptain,
+    settings.autoHideClientBanner,
+    settings.autoVetoMaps,
+  ].filter(Boolean).length;
+
+  const allCoreActive =
+    settings.enableRedFlags &&
+    settings.enableVetoHelper &&
+    settings.enablePremadeDetection &&
+    settings.autoReadyUp;
+
+  const activeCoreParts = [
+    settings.enableRedFlags && 'risk scoring',
+    settings.enableVetoHelper && 'veto helper',
+    settings.enablePremadeDetection && 'party detection',
+    settings.autoReadyUp && 'auto ready-up',
+  ].filter(Boolean) as string[];
+
+  const coreSummary =
+    activeCoreParts.length === 0
+      ? 'No core modules are currently active.'
+      : activeCoreParts.length === 1
+        ? `${activeCoreParts[0]} is active.`
+        : activeCoreParts.length === 2
+          ? `${activeCoreParts[0]} and ${activeCoreParts[1]} are active.`
+          : `${activeCoreParts.slice(0, -1).join(', ')} and ${activeCoreParts[activeCoreParts.length - 1]} are active.`;
+
   return (
-    <div className="w-[370px] min-h-[460px] bg-faceit-dark text-white font-sans flex flex-col selection:bg-faceit-orange selection:text-black">
+    <div className="w-[380px] max-w-full min-w-[320px] min-h-[480px] bg-faceit-dark text-white font-sans flex flex-col selection:bg-faceit-orange selection:text-black">
       {/* Header */}
       <div className="p-3.5 bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border-b border-faceit-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -115,17 +162,25 @@ export const PopupApp: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-bold">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Auto Ready
+        <div
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold ${
+            settings.autoReadyUp
+              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+          }`}
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${settings.autoReadyUp ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`}
+          />
+          Auto Ready: {settings.autoReadyUp ? 'ON' : 'OFF'}
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-4 border-b border-faceit-border/80 bg-zinc-900/80 text-xs text-center">
+      <div className="grid grid-cols-4 border-b border-faceit-border/80 bg-zinc-900/80 text-[11px] text-center">
         <button
           onClick={() => setActiveTab('status')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'status'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -136,7 +191,7 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('automation')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'automation'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -147,7 +202,7 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('modules')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'modules'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -158,7 +213,7 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('cache')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 ${
+          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'cache'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -172,9 +227,19 @@ export const PopupApp: React.FC = () => {
       {/* Tab Content */}
       <div className="p-4 flex-1 space-y-3.5 max-h-[380px] overflow-y-auto">
         {statusMessage && (
-          <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-fade-in">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{statusMessage}</span>
+          <div
+            className={`p-2 rounded-lg border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+              statusMessage.type === 'error'
+                ? 'bg-red-500/20 border-red-500/40 text-red-300'
+                : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+            }`}
+          >
+            {statusMessage.type === 'error' ? (
+              <AlertTriangle className="w-4 h-4" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
+            <span>{statusMessage.text}</span>
           </div>
         )}
 
@@ -182,17 +247,29 @@ export const PopupApp: React.FC = () => {
         {activeTab === 'status' && (
           <div className="space-y-3">
             {/* Status Banner */}
-            <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/40 via-zinc-900 to-zinc-900 border border-emerald-500/30 flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            {allCoreActive ? (
+              <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/40 via-zinc-900 to-zinc-900 border border-emerald-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-xs text-white">All Systems Operational</div>
+                  <p className="text-[11px] text-zinc-300 mt-0.5">{coreSummary}</p>
+                </div>
               </div>
-              <div>
-                <div className="font-bold text-xs text-white">All Systems Operational</div>
-                <p className="text-[11px] text-zinc-300 mt-0.5">
-                  Real-time match room analytics, automated queue tools, multi-factor prediction logic, and tactical map overlays are active.
-                </p>
+            ) : (
+              <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-xs text-white">Some Modules Disabled</div>
+                  <p className="text-[11px] text-zinc-300 mt-0.5">
+                    Enabled: {enabledCount} / 15 modules
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Feature Status Grid */}
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -200,7 +277,9 @@ export const PopupApp: React.FC = () => {
                 <Shield className="w-4 h-4 text-faceit-orange flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Smurf Scorer</div>
-                  <div className="text-[10px] text-emerald-400 font-mono">● 0-100% Risk</div>
+                  <div className={`text-[10px] font-mono ${settings.enableRedFlags ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    {settings.enableRedFlags ? '● Enabled' : '○ Disabled'}
+                  </div>
                 </div>
               </div>
 
@@ -208,7 +287,9 @@ export const PopupApp: React.FC = () => {
                 <Layers className="w-4 h-4 text-purple-400 flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Veto Helper</div>
-                  <div className="text-[10px] text-emerald-400 font-mono">● 7 Active Maps</div>
+                  <div className={`text-[10px] font-mono ${settings.enableVetoHelper ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    {settings.enableVetoHelper ? '● Enabled' : '○ Disabled'}
+                  </div>
                 </div>
               </div>
 
@@ -216,7 +297,9 @@ export const PopupApp: React.FC = () => {
                 <Play className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Auto Ready-Up</div>
-                  <div className="text-[10px] text-emerald-400 font-mono">{settings.autoReadyUp ? '● Enabled' : '○ Disabled'}</div>
+                  <div className={`text-[10px] font-mono ${settings.autoReadyUp ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    {settings.autoReadyUp ? '● Enabled' : '○ Disabled'}
+                  </div>
                 </div>
               </div>
 
@@ -224,7 +307,9 @@ export const PopupApp: React.FC = () => {
                 <Users className="w-4 h-4 text-blue-400 flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Party Detector</div>
-                  <div className="text-[10px] text-emerald-400 font-mono">● Auto Cluster</div>
+                  <div className={`text-[10px] font-mono ${settings.enablePremadeDetection ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    {settings.enablePremadeDetection ? '● Enabled' : '○ Disabled'}
+                  </div>
                 </div>
               </div>
             </div>
@@ -392,7 +477,7 @@ export const PopupApp: React.FC = () => {
               <div className="text-xs font-bold text-zinc-100">Local Cache (chrome.storage)</div>
               <div className="grid grid-cols-2 gap-2 text-center pt-1 font-mono">
                 <div className="bg-faceit-dark/70 rounded p-2 border border-zinc-700/40">
-                  <div className="text-[10px] text-faceit-muted font-sans uppercase">Cached Players</div>
+                  <div className="text-[10px] text-faceit-muted font-sans uppercase">Cache Entries</div>
                   <div className="text-sm font-bold text-zinc-100 mt-0.5">{cacheStats?.totalEntries ?? 0}</div>
                 </div>
                 <div className="bg-faceit-dark/70 rounded p-2 border border-zinc-700/40">

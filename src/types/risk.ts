@@ -8,7 +8,7 @@ export interface RiskFlag {
   description: string;
   weight: number; // Impact on score (0 - 40)
   severity: RiskSeverity;
-  category: 'MATCHES_ELO' | 'KD_ANOMALY' | 'WINRATE_ANOMALY' | 'STEAM_HOURS' | 'STEAM_AGE' | 'BAN_HISTORY' | 'PRIVATE_PROFILE';
+  category: 'MATCHES_ELO' | 'KD_ANOMALY' | 'ADR_ANOMALY' | 'HS_ANOMALY' | 'WINRATE_ANOMALY' | 'STEAM_HOURS' | 'STEAM_AGE' | 'BAN_HISTORY' | 'PRIVATE_PROFILE' | 'ACCOUNT_AGE';
 }
 
 export interface RiskAnalysisResult {

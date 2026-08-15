@@ -142,4 +142,158 @@ describe('calculateRiskScore', () => {
     expect(result.isPrivateSteam).toBe(true);
     expect(result.flags.some((f) => f.id === 'private_steam')).toBe(true);
   });
+
+  it('should not flag accounts as private when Steam data failed to fetch', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'p-2',
+      nickname: 'NetworkIssues',
+      avatar: '',
+      country: 'fr',
+      elo: 1500,
+      skillLevel: 6,
+      totalMatches: 300,
+      overallWinRate: 52,
+      overallKd: 1.1,
+      overallHsPercent: 48,
+      overallAdr: 80,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.1,
+      recentAdr: 80,
+    };
+
+    const steam: SteamFullData = {
+      isPrivate: true,
+      fetchError: true,
+      fetchedAt: Date.now(),
+    };
+
+    const result = calculateRiskScore(player, steam);
+    expect(result.isPrivateSteam).toBe(false);
+    expect(result.flags.some((f) => f.category === 'PRIVATE_PROFILE')).toBe(false);
+  });
+
+  it('should treat missing Steam data as unknown, not as a private profile', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'p-3',
+      nickname: 'NoSteamId',
+      avatar: '',
+      country: 'uk',
+      elo: 1500,
+      skillLevel: 6,
+      totalMatches: 300,
+      overallWinRate: 52,
+      overallKd: 1.1,
+      overallHsPercent: 48,
+      overallAdr: 80,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.1,
+      recentAdr: 80,
+    };
+
+    const result = calculateRiskScore(player, undefined);
+    expect(result.isPrivateSteam).toBe(false);
+    expect(result.flags.some((f) => f.category === 'PRIVATE_PROFILE')).toBe(false);
+  });
+
+  it('should flag extreme ADR, ADR spike and headshot anomalies', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'adr-1',
+      nickname: 'AdrGod',
+      avatar: '',
+      country: 'pl',
+      elo: 1800,
+      skillLevel: 8,
+      totalMatches: 250,
+      overallWinRate: 55,
+      overallKd: 1.3,
+      overallHsPercent: 63,
+      overallAdr: 96,
+      last30Adr: 102,
+      last30AdrMatches: 28,
+      last30HsPercent: 61,
+      currentStreak: { type: 'W', count: 2 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.4,
+      recentAdr: 118,
+    };
+
+    const result = calculateRiskScore(player, undefined);
+    expect(result.flags.some((f) => f.id === 'extreme_adr')).toBe(true);
+    expect(result.flags.some((f) => f.id === 'recent_extreme_adr')).toBe(true);
+    expect(result.flags.some((f) => f.id === 'recent_adr_spike')).toBe(true);
+    expect(result.flags.some((f) => f.id === 'extreme_hs_recent')).toBe(true);
+  });
+
+  it('should flag 30-match dominance and mid-term K/D spike', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'dom-1',
+      nickname: 'Dominator',
+      avatar: '',
+      country: 'se',
+      elo: 1700,
+      skillLevel: 7,
+      totalMatches: 180,
+      overallWinRate: 58,
+      overallKd: 1.1,
+      overallHsPercent: 48,
+      overallAdr: 82,
+      last30Kd: 1.65,
+      last30WinRate: 87,
+      last30Matches: 30,
+      currentStreak: { type: 'W', count: 5 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'HOT',
+      recentKd: 1.8,
+      recentAdr: 95,
+    };
+
+    const result = calculateRiskScore(player, undefined);
+    expect(result.flags.some((f) => f.id === 'recent_dominance')).toBe(true);
+    expect(result.flags.some((f) => f.id === 'midterm_kd_spike')).toBe(true);
+    expect(result.score).toBeGreaterThanOrEqual(25);
+  });
+
+  it('should scale hidden-profile suspicion with Elo and flag fresh FACEIT accounts', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'hid-1',
+      nickname: 'HiddenHighElo',
+      avatar: '',
+      country: 'ru',
+      elo: 2100,
+      skillLevel: 10,
+      totalMatches: 90,
+      overallWinRate: 54,
+      overallKd: 1.2,
+      overallHsPercent: 47,
+      overallAdr: 85,
+      registrationDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.3,
+      recentAdr: 85,
+    };
+
+    const steam: SteamFullData = {
+      isPrivate: true,
+      fetchedAt: Date.now(),
+    };
+
+    const result = calculateRiskScore(player, steam);
+    expect(result.isPrivateSteam).toBe(true);
+    expect(result.flags.some((f) => f.id === 'hidden_high_elo')).toBe(true);
+    expect(result.flags.some((f) => f.id === 'private_steam_fresh_account')).toBe(true);
+    expect(result.flags.some((f) => f.id === 'fresh_faceit_high_elo')).toBe(true);
+    expect(result.score).toBeGreaterThanOrEqual(45);
+  });
 });

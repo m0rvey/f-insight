@@ -41,6 +41,7 @@ export interface AdvancedMatchPrediction {
     smurfRiskDelta: {
       f1HighRiskCount: number;
       f2HighRiskCount: number;
+      impactPercent: number;
     };
   };
   starMatchup?: {
@@ -84,7 +85,6 @@ export type ExtensionMessage =
   | { type: 'GET_SETTINGS' }
   | { type: 'SAVE_SETTINGS'; payload: Partial<ExtensionSettings> }
   | { type: 'FETCH_LOBBY_INSIGHT'; payload: { matchId: string; forceRefresh?: boolean } }
-  | { type: 'FETCH_PLAYER_INSIGHT'; payload: { playerId: string; steamId64?: string; forceRefresh?: boolean } }
   | { type: 'GET_CACHE_STATS' }
   | { type: 'CLEAR_CACHE' };
 

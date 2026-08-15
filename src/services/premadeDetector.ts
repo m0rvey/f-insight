@@ -52,12 +52,14 @@ export function detectPremades(
       .map((p) => p.player_id)
       .filter((id) => !identifiedPartyPlayers.has(id));
 
-    // Build map of matchIds per player
+    // Build map of matchIds per player (only the most recent matches count —
+    // ancient shared history in the same bracket is not evidence of a party)
+    const RECENT_WINDOW = 15;
     const playerMatchSets = new Map<string, Set<string>>();
     for (const pId of remainingPlayers) {
       const stats = playersStats[pId];
       if (stats?.recentMatches) {
-        playerMatchSets.set(pId, new Set(stats.recentMatches.map((m) => m.matchId)));
+        playerMatchSets.set(pId, new Set(stats.recentMatches.slice(0, RECENT_WINDOW).map((m) => m.matchId)));
       }
     }
 

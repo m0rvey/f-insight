@@ -18,11 +18,45 @@ import { FaceitPlayerFullStats } from '../types/faceit';
 import { SteamFullData } from '../types/steam';
 import { RiskAnalysisResult } from '../types/risk';
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Runs async work over a list with a limited number of concurrent workers.
+ * A small delay after each item smooths the request burst so we never trip
+ * Cloudflare rate-limits on api.faceit.com (FACEIT's own page requests —
+ * player popovers/profiles — fail with "Action Failed" when the domain is
+ * throttled).
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+  delayMs = 150
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+      if (delayMs > 0) await sleep(delayMs);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 export class BackgroundMessageHandler {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
+  private initialized = false;
 
   async init() {
+    if (this.initialized) return;
     await this.loadSettings();
+    this.initialized = true;
   }
 
   async loadSettings(): Promise<ExtensionSettings> {
@@ -45,8 +79,6 @@ export class BackgroundMessageHandler {
           return this.handleSaveSettings(message.payload);
         case 'FETCH_LOBBY_INSIGHT':
           return this.handleFetchLobbyInsight(message.payload, _sender);
-        case 'FETCH_PLAYER_INSIGHT':
-          return this.handleFetchPlayerInsight(message.payload);
         case 'GET_CACHE_STATS':
           return this.handleGetCacheStats();
         case 'CLEAR_CACHE':
@@ -94,6 +126,20 @@ export class BackgroundMessageHandler {
   }
 
   private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
+    try {
+      await this.streamLobbyDataInner(matchId, match, forceRefresh, sender);
+    } catch (err: any) {
+      console.error('[f-insight:Stream] Error:', err);
+      if (sender?.tab?.id) {
+        this.safeSendToTab(sender.tab.id, {
+          type: 'LOBBY_ANALYSIS_ERROR',
+          payload: { matchId, error: err?.message || 'Match analysis stream failed' },
+        });
+      }
+    }
+  }
+
+  private async streamLobbyDataInner(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
     const cacheKey = `match_analysis:${matchId}`;
     const f1Roster = match.teams?.faction1?.roster || [];
     const f2Roster = match.teams?.faction2?.roster || [];
@@ -103,9 +149,12 @@ export class BackgroundMessageHandler {
     const steamData: Record<string, SteamFullData> = {};
     const riskAnalysis: Record<string, RiskAnalysisResult> = {};
 
-    // Fetch all players concurrently with cache
-    await Promise.all(
-      allPlayers.map(async (player) => {
+    // Fetch all players with bounded concurrency (3 workers + small delay between
+    // requests) to avoid rate-limiting api.faceit.com with a 20-request burst.
+    await mapWithConcurrency(
+      allPlayers,
+      3,
+      async (player) => {
         const pId = player.player_id;
         if (!pId) return;
 
@@ -139,7 +188,10 @@ export class BackgroundMessageHandler {
 
             if (!sData) {
               sData = await steamApi.getPlayerFullData(steamId);
-              await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
+              // Never cache error results (rate-limit / network): retry on the next fetch
+              if (sData && !sData.fetchError) {
+                await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
+              }
             }
 
             if (sData) {
@@ -149,15 +201,16 @@ export class BackgroundMessageHandler {
 
           // 3. Red Flags Risk Score
           riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
-          
+
           if (sender?.tab?.id) {
-             chrome.tabs.sendMessage(sender.tab.id, {
-               type: 'PLAYER_STATS_UPDATE',
-               payload: { playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] }
-             });
+            this.safeSendToTab(sender.tab.id, {
+              type: 'PLAYER_STATS_UPDATE',
+              payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] },
+            });
           }
         }
-      })
+      },
+      200
     );
 
     // Calculate Team Elo and Probabilities
@@ -174,8 +227,8 @@ export class BackgroundMessageHandler {
     // Projected Elo (+/-)
     const projectedEloStakes = calculateProjectedElo(f1AvgElo, f2AvgElo);
 
-    const f1Kds = f1Roster.map((p: any) => playersStats[p.player_id]?.overallKd || 1.0);
-    const f2Kds = f2Roster.map((p: any) => playersStats[p.player_id]?.overallKd || 1.0);
+    const f1Kds = f1Roster.map((p: any) => playersStats[p.player_id]?.last30Kd ?? playersStats[p.player_id]?.overallKd ?? 1.0);
+    const f2Kds = f2Roster.map((p: any) => playersStats[p.player_id]?.last30Kd ?? playersStats[p.player_id]?.overallKd ?? 1.0);
     const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a: number, b: number) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
     const f2AvgKd = f2Kds.length > 0 ? parseFloat((f2Kds.reduce((a: number, b: number) => a + b, 0) / f2Kds.length).toFixed(2)) : 1.0;
 
@@ -184,8 +237,8 @@ export class BackgroundMessageHandler {
     const f1AvgHs = f1Hs.length > 0 ? Math.round(f1Hs.reduce((a: number, b: number) => a + b, 0) / f1Hs.length) : 0;
     const f2AvgHs = f2Hs.length > 0 ? Math.round(f2Hs.reduce((a: number, b: number) => a + b, 0) / f2Hs.length) : 0;
 
-    const f1Adrs = f1Roster.map((p: any) => playersStats[p.player_id]?.overallAdr || 75);
-    const f2Adrs = f2Roster.map((p: any) => playersStats[p.player_id]?.overallAdr || 75);
+    const f1Adrs = f1Roster.map((p: any) => playersStats[p.player_id]?.last30Adr ?? playersStats[p.player_id]?.overallAdr ?? 75);
+    const f2Adrs = f2Roster.map((p: any) => playersStats[p.player_id]?.last30Adr ?? playersStats[p.player_id]?.overallAdr ?? 75);
     const f1AvgAdr = f1Adrs.length > 0 ? Math.round(f1Adrs.reduce((a: number, b: number) => a + b, 0) / f1Adrs.length) : 75;
     const f2AvgAdr = f2Adrs.length > 0 ? Math.round(f2Adrs.reduce((a: number, b: number) => a + b, 0) / f2Adrs.length) : 75;
 
@@ -252,49 +305,17 @@ export class BackgroundMessageHandler {
 
     await cacheManager.set(cacheKey, out, TTL.MATCH);
     if (sender?.tab?.id) {
-       chrome.tabs.sendMessage(sender.tab.id, {
+       this.safeSendToTab(sender.tab.id, {
          type: 'LOBBY_ANALYSIS_COMPLETE',
          payload: out
        });
     }
   }
 
-  private async handleFetchPlayerInsight(payload: any): Promise<MessageResponse> {
-    const { playerId, steamId64, forceRefresh } = payload;
-    const pCacheKey = `player_stats:${playerId}`;
-
-    let pStats = !forceRefresh ? await cacheManager.get<FaceitPlayerFullStats>(pCacheKey) : null;
-    if (!pStats) {
-      pStats = await faceitApi.getPlayerStats(playerId);
-      if (pStats) {
-        await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
-      }
-    }
-
-    if (!pStats) {
-      return { success: false, error: 'Player stats not found' };
-    }
-
-    let sData: SteamFullData | undefined;
-    const targetSteamId = steamId64 || pStats.steamId64;
-    if (targetSteamId) {
-      const sCacheKey = `steam_data:${targetSteamId}`;
-      sData = !forceRefresh ? (await cacheManager.get<SteamFullData>(sCacheKey)) || undefined : undefined;
-      if (!sData) {
-        sData = await steamApi.getPlayerFullData(targetSteamId);
-        await cacheManager.set(sCacheKey, sData, TTL.STEAM_PROFILE);
-      }
-    }
-
-    const risk = calculateRiskScore(pStats, sData);
-    return {
-      success: true,
-      data: {
-        stats: pStats,
-        steam: sData,
-        risk,
-      },
-    };
+  private safeSendToTab(tabId: number, message: any) {
+    chrome.tabs.sendMessage(tabId, message).catch((err) => {
+      console.debug('[f-insight:Background] Tab unavailable, skipping message:', err?.message || err);
+    });
   }
 
   private async handleGetCacheStats(): Promise<MessageResponse> {

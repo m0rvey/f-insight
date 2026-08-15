@@ -7,6 +7,7 @@ import {
   calculateMapVetoRanking,
 } from '../src/services/forecastEngine';
 import { FaceitPlayerFullStats, PlayerRecentMatch } from '../src/types/faceit';
+import { RiskAnalysisResult } from '../src/types/risk';
 
 describe('forecastEngine', () => {
   describe('calculateProjectedElo', () => {
@@ -139,6 +140,87 @@ describe('forecastEngine', () => {
       expect(pred.winChanceF1).toBeGreaterThan(55);
       expect(pred.factors.mapAdvantage?.leader).toBe('faction1');
       expect(pred.predictedScore.f1Score).toBe(13);
+    });
+  });
+
+  describe('smurf risk factor', () => {
+    const createDummyPlayer = (id: string, elo: number, formStatus: 'HOT' | 'COLD' | 'STABLE'): FaceitPlayerFullStats => ({
+      playerId: id,
+      nickname: `Player_${id}`,
+      avatar: '',
+      country: 'se',
+      elo,
+      skillLevel: 8,
+      totalMatches: 200,
+      overallWinRate: 55,
+      overallKd: 1.1,
+      overallHsPercent: 50,
+      overallAdr: 80,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus,
+      recentKd: 1.1,
+      recentAdr: 80,
+    });
+
+    const makeRiskResult = (level: RiskAnalysisResult['level']): RiskAnalysisResult => ({
+      score: level === 'HIGH' ? 70 : level === 'CRITICAL' ? 90 : 15,
+      level,
+      flags: [],
+      isPrivateSteam: false,
+      summary: '',
+      color: '',
+      badgeText: '',
+    });
+
+    it('should boost win chance when Team 1 carries flagged accounts', () => {
+      const f1Players = [1, 2, 3, 4, 5].map((i) => createDummyPlayer(`f1_${i}`, 1500, 'STABLE'));
+      const f2Players = [1, 2, 3, 4, 5].map((i) => createDummyPlayer(`f2_${i}`, 1500, 'STABLE'));
+
+      const riskAnalysis: Record<string, RiskAnalysisResult> = {};
+      f1Players.slice(0, 3).forEach((p, i) => {
+        riskAnalysis[p.playerId] = makeRiskResult(i === 0 ? 'HIGH' : 'CRITICAL');
+      });
+      f2Players.forEach((p) => {
+        riskAnalysis[p.playerId] = makeRiskResult('LOW');
+      });
+
+      const pred = calculateAdvancedMatchPrediction({
+        f1AvgElo: 1500,
+        f2AvgElo: 1500,
+        f1Players,
+        f2Players,
+        premadeGroups: [],
+        riskAnalysis,
+        f1Fcr: {},
+        f2Fcr: {},
+      });
+
+      expect(pred.winChanceF1).toBeGreaterThan(52);
+      expect(pred.factors.smurfRiskDelta.f1HighRiskCount).toBe(3);
+      expect(pred.factors.smurfRiskDelta.f2HighRiskCount).toBe(0);
+      expect(pred.factors.smurfRiskDelta.impactPercent).toBe(6);
+      expect(pred.keyAdvantageText).toContain('flagged accounts');
+    });
+
+    it('should not apply the factor when risk data is empty', () => {
+      const f1Players = [1, 2, 3, 4, 5].map((i) => createDummyPlayer(`f1_${i}`, 1500, 'STABLE'));
+      const f2Players = [1, 2, 3, 4, 5].map((i) => createDummyPlayer(`f2_${i}`, 1500, 'STABLE'));
+
+      const pred = calculateAdvancedMatchPrediction({
+        f1AvgElo: 1500,
+        f2AvgElo: 1500,
+        f1Players,
+        f2Players,
+        premadeGroups: [],
+        riskAnalysis: {},
+        f1Fcr: {},
+        f2Fcr: {},
+      });
+
+      expect(pred.winChanceF1).toBe(50);
+      expect(pred.factors.smurfRiskDelta.impactPercent).toBe(0);
     });
   });
 

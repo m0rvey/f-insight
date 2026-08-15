@@ -18,19 +18,39 @@ export class SpaWatcher {
 
   private hookHistoryEvents() {
     const originalPushState = history.pushState;
-    history.pushState = (...args) => {
-      originalPushState.apply(history, args);
-      this.checkUrl();
-    };
-
     const originalReplaceState = history.replaceState;
-    history.replaceState = (...args) => {
-      originalReplaceState.apply(history, args);
-      this.checkUrl();
+
+    // Wrapping history methods can break the host router if anything in our
+    // bookkeeping throws — never let our code leak an exception into FACEIT's
+    // navigation flow.
+    history.pushState = (...args) => {
+      try {
+        originalPushState.apply(history, args);
+      } catch (err) {
+        console.warn('[f-insight:SpaWatcher] pushState failed:', err);
+      }
+      this.checkUrlSafe();
     };
 
-    window.addEventListener('popstate', () => this.checkUrl());
-    window.addEventListener('hashchange', () => this.checkUrl());
+    history.replaceState = (...args) => {
+      try {
+        originalReplaceState.apply(history, args);
+      } catch (err) {
+        console.warn('[f-insight:SpaWatcher] replaceState failed:', err);
+      }
+      this.checkUrlSafe();
+    };
+
+    window.addEventListener('popstate', () => this.checkUrlSafe());
+    window.addEventListener('hashchange', () => this.checkUrlSafe());
+  }
+
+  private checkUrlSafe() {
+    try {
+      this.checkUrl();
+    } catch (err) {
+      console.warn('[f-insight:SpaWatcher] checkUrl failed:', err);
+    }
   }
 
   private intervalId: number | null = null;

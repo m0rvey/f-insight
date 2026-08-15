@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { LobbyAnalysisPayload } from '../types/messages';
+import { ExtensionSettings } from '../types/settings';
 import { ServerConnectBar } from './lobby/ServerConnectBar';
 import { ProbabilityBar } from './lobby/ProbabilityBar';
 import { TeamCard } from './lobby/TeamCard';
-import { calculateMapVetoRanking } from '../services/forecastEngine';
+import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { FaceitPlayerFullStats } from '../types/faceit';
 import {
   ShieldAlert,
@@ -29,6 +30,8 @@ interface LobbySummaryBarProps {
   showVetoMatrix?: boolean;
   onToggleVetoMatrix?: () => void;
   currentUser?: DetectedCurrentUser;
+  settings?: ExtensionSettings;
+  rankedMaps?: MapVetoRankItem[];
 }
 
 export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
@@ -40,34 +43,65 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
   showVetoMatrix,
   onToggleVetoMatrix,
   currentUser,
+  settings,
+  rankedMaps: propsRankedMaps,
 }) => {
   const { match, teamSummary, riskAnalysis, premadeGroups, playersStats } = payload;
   const f1 = match.teams.faction1;
   const f2 = match.teams.faction2;
+  const compact = settings?.compactMode === true;
+  const vetoEnabled = settings?.enableVetoHelper !== false;
+  const isF2Perspective = currentUser?.faction === 'faction2';
 
   // Use the forecastEngine map ranker for Top Map
-  const getPlayer = (r: { player_id?: string; nickname?: string }) => {
-    const id = r.player_id || '';
-    if (id && playersStats?.[id]) return playersStats[id];
-    if (r.nickname) {
-      const found = Object.values(playersStats || {}).find(
-        (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
-      );
-      if (found) return found;
-    }
-    return undefined;
-  };
+  const { f1Players, f2Players } = useMemo(() => {
+    const getPlayer = (r: { player_id?: string; nickname?: string }) => {
+      const id = r.player_id || '';
+      if (id && playersStats?.[id]) return playersStats[id];
+      if (r.nickname) {
+        const found = Object.values(playersStats || {}).find(
+          (p) => p.nickname?.toLowerCase() === r.nickname?.toLowerCase()
+        );
+        if (found) return found;
+      }
+      return undefined;
+    };
 
-  const f1Players = (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
-  const f2Players = (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p));
-  
-  const votingEntities = match.voting?.map?.entities || [];
-  const availableMaps = votingEntities.map((e) => e.name || (e as any).guid || '').filter(Boolean);
-  const rankedMaps = calculateMapVetoRanking({ f1Players, f2Players, availableMaps });
-  
-  // Best maps for each team
-  const f1TopMap = [...rankedMaps].sort((a, b) => b.advantageDelta - a.advantageDelta)[0];
-  const f2TopMap = [...rankedMaps].sort((a, b) => a.advantageDelta - b.advantageDelta)[0];
+    return {
+      f1Players: (f1.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p)),
+      f2Players: (f2.roster || []).map(getPlayer).filter((p): p is FaceitPlayerFullStats => Boolean(p)),
+    };
+  }, [f1.roster, f2.roster, playersStats]);
+
+  // Use the engine-computed ranking when available (computed once per payload state)
+  const rankedMaps = useMemo(() => {
+    if (!vetoEnabled) return [];
+    if (propsRankedMaps) return propsRankedMaps;
+    const availableMaps = (match.voting?.map?.entities || [])
+      .map((e) => e.name || (e as any).guid || '')
+      .filter(Boolean);
+    return calculateMapVetoRanking({
+      f1Players,
+      f2Players,
+      availableMaps,
+      userFaction: currentUser?.faction,
+    });
+  }, [vetoEnabled, propsRankedMaps, match.voting?.map?.entities, f1Players, f2Players, currentUser?.faction]);
+
+  // Best maps for each team — advantageDelta is always from the current user's
+  // perspective (f1 when unknown, f2 when the user is on faction2)
+  const f1TopMap = useMemo(
+    () => [...rankedMaps].sort((a, b) =>
+      isF2Perspective ? a.advantageDelta - b.advantageDelta : b.advantageDelta - a.advantageDelta
+    )[0],
+    [rankedMaps, isF2Perspective]
+  );
+  const f2TopMap = useMemo(
+    () => [...rankedMaps].sort((a, b) =>
+      isF2Perspective ? b.advantageDelta - a.advantageDelta : a.advantageDelta - b.advantageDelta
+    )[0],
+    [rankedMaps, isF2Perspective]
+  );
 
   const f1TopMapSummary = f1TopMap ? { name: f1TopMap.mapName, wr: f1TopMap.f1WinRate } : null;
   const f2TopMapSummary = f2TopMap ? { name: f2TopMap.mapName, wr: f2TopMap.f2WinRate } : null;
@@ -77,7 +111,10 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
   // Compute High Risk Count
   const allRiskResults = Object.values(riskAnalysis || {});
-  const highRiskCount = allRiskResults.filter((r) => r.level === 'HIGH' || r.level === 'CRITICAL').length;
+  const highRiskCount = settings?.enableRedFlags === false
+    ? 0
+    : allRiskResults.filter((r) => r.level === 'HIGH' || r.level === 'CRITICAL').length;
+  const visiblePremadeGroups = settings?.enablePremadeDetection === false ? [] : (premadeGroups || []);
 
   const rawServerIp = match.server_ip;
   const serverIp = rawServerIp && /^[a-zA-Z0-9.\-:]+$/.test(rawServerIp) ? rawServerIp : undefined;
@@ -92,8 +129,9 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
       case 'VOTING':
         return { label: 'Map Veto Phase', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' };
       case 'CONFIGURING':
+        return { label: 'Server Configuring', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' };
       case 'READY':
-        return { label: 'Server Ready', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' };
+        return { label: 'Server Ready', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' };
       default:
         return { label: match.status, color: 'bg-zinc-800 text-zinc-300 border-zinc-700' };
     }
@@ -112,12 +150,12 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
     return reg;
   };
 
-  const win1 = teamSummary?.faction1?.winChancePercent || 50;
-  const win2 = teamSummary?.faction2?.winChancePercent || 50;
+  const win1 = teamSummary?.faction1?.winChancePercent ?? 50;
+  const win2 = teamSummary?.faction2?.winChancePercent ?? 50;
 
   return (
     <div className="w-full mb-4 font-sans antialiased text-white selection:bg-faceit-orange selection:text-black">
-      <div className="glass-panel rounded-2xl p-4 sm:p-5 shadow-card border border-white/10 relative overflow-hidden bg-gradient-to-b from-[#18181C]/90 to-[#121214]/95">
+      <div className={`glass-panel rounded-2xl shadow-card border border-white/10 relative overflow-hidden bg-gradient-to-b from-[#18181C]/90 to-[#121214]/95 ${compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}`}>
         {/* Glowing top line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 via-faceit-orange to-amber-400 opacity-90" />
 
@@ -133,13 +171,13 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-faceit-orange/20 text-faceit-orange border border-faceit-orange/40">
                   CS2 5v5
                 </span>
-                <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${statusInfo.color}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${statusInfo.color}`}>
                   {statusInfo.label}
                 </span>
                 {match.selected_map && (
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                     <Sparkles className="w-3 h-3" />
-                    {match.selected_map.replace('de_', '')}
+                    {match.selected_map.replace(/^(cs2_|csgo_|de_)/, '')}
                   </span>
                 )}
               </div>
@@ -153,7 +191,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     <span>•</span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-zinc-400" />
-                      {new Date(match.configured_at > 1e12 ? match.configured_at : match.configured_at * 1000).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                      {new Date(match.configured_at > 1e12 ? match.configured_at : match.configured_at * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                     </span>
                   </>
                 )}
@@ -169,14 +207,14 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
               </div>
             )}
 
-            {(premadeGroups || []).length > 0 && (
+            {visiblePremadeGroups.length > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-200 text-xs font-medium shadow-sm">
                 <Users className="w-3.5 h-3.5 text-purple-400" />
-                <span>{(premadeGroups || []).length} Party</span>
+                <span>{visiblePremadeGroups.length} Party</span>
               </div>
             )}
 
-            {onToggleVetoMatrix && (
+            {onToggleVetoMatrix && vetoEnabled && (
               <button
                 onClick={onToggleVetoMatrix}
                 title="Toggle Veto & Map Pool Matrix"
@@ -210,17 +248,24 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
           </div>
         </div>
 
-        {serverIp && <ServerConnectBar serverIp={serverIp} />}
+        {serverIp && <ServerConnectBar serverIp={serverIp} status={match.status} />}
 
         {isVisible && (
-          <div className="mt-4 space-y-3.5">
+          <div className={`${compact ? 'mt-3 space-y-2.5' : 'mt-4 space-y-3.5'}`}>
             {!teamSummary ? (
-              <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-faceit-orange" />
-                  Calculating Match Prediction & Risk Factors...
-                </span>
-              </div>
+              isLoading ? (
+                <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-faceit-orange" />
+                    Calculating Match Prediction & Risk Factors...
+                  </span>
+                </div>
+              ) : (
+                <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 border border-white/5 bg-black/20 rounded-xl text-zinc-500 font-mono text-xs shadow-inner">
+                  <span>FACEIT API unreachable — insights unavailable</span>
+                  <span className="text-[10px] text-zinc-600">Press Alt+R to retry</span>
+                </div>
+              )
             ) : (
               <>
                 <ProbabilityBar 
@@ -260,18 +305,18 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                           <span className="font-extrabold text-zinc-100 uppercase tracking-wide">
                             {selectedMapRankItem.mapName} Matchup
                           </span>
-                          <span className="text-[10px] px-2 py-0.2 rounded-full font-mono font-bold bg-white/10 border border-white/10 text-zinc-300">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-white/10 border border-white/10 text-zinc-300">
                             Map Impact
                           </span>
                         </div>
                         <div className="text-[11px] text-zinc-400 mt-0.5">
                           {selectedMapRankItem.advantageDelta > 0 ? (
                             <span className="text-blue-300 font-semibold">
-                              +{selectedMapRankItem.advantageDelta}% Map Edge for {f1.name}
+                              +{selectedMapRankItem.advantageDelta}% Map Edge for {isF2Perspective ? f2.name : f1.name}
                             </span>
                           ) : selectedMapRankItem.advantageDelta < 0 ? (
                             <span className="text-orange-300 font-semibold">
-                              +{Math.abs(selectedMapRankItem.advantageDelta)}% Map Edge for {f2.name}
+                              +{Math.abs(selectedMapRankItem.advantageDelta)}% Map Edge for {isF2Perspective ? f1.name : f2.name}
                             </span>
                           ) : (
                             <span className="text-zinc-300 font-semibold">

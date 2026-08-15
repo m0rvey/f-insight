@@ -4,11 +4,10 @@ import { TrendingUp, Shield, ChevronRight } from 'lucide-react';
 
 interface LevelProgressBarProps {
   elo: number;
-  skillLevel?: number;
 }
 
-export const LevelProgressBar: React.FC<LevelProgressBarProps> = ({ elo, skillLevel }) => {
-  const progress = calculateLevelProgress(elo, skillLevel);
+export const LevelProgressBar = React.memo<LevelProgressBarProps>(({ elo }) => {
+  const progress = calculateLevelProgress(elo);
 
   return (
     <div className="p-3.5 rounded-xl bg-gradient-to-r from-faceit-card via-[#16161A] to-faceit-card border border-faceit-border/80 shadow-sm font-sans">
@@ -26,7 +25,7 @@ export const LevelProgressBar: React.FC<LevelProgressBarProps> = ({ elo, skillLe
           </div>
         </div>
 
-        <div className="text-right text-[11px] font-mono">
+        <div className="text-right text-xs font-mono">
           {progress.pointsToNext !== null ? (
             <span className="text-emerald-400 font-bold">
               +{progress.pointsToNext} ELO to Lvl {progress.nextLevel}
@@ -50,13 +49,14 @@ export const LevelProgressBar: React.FC<LevelProgressBarProps> = ({ elo, skillLe
       {/* Footer Boundaries */}
       <div className="flex items-center justify-between mt-1.5 text-[10px] font-mono text-zinc-500">
         <span>{progress.minElo} Elo</span>
-        {progress.pointsToDemotion !== null && progress.pointsToDemotion <= 50 && (
+        {progress.pointsToDemotion !== null && progress.pointsToDemotion > 0 && progress.pointsToDemotion <= 50 && (
           <span className="text-red-400/90 font-semibold flex items-center gap-0.5">
             <Shield className="w-2.5 h-2.5" /> -{progress.pointsToDemotion} to Lvl {progress.previousLevel}
           </span>
         )}
-        <span>{progress.maxElo ? `${progress.maxElo} Elo` : '2000+'}</span>
+        <span>{progress.maxElo ? `${progress.maxElo} Elo` : `${progress.minElo}+ Elo`}</span>
       </div>
     </div>
   );
-};
+});
+LevelProgressBar.displayName = "LevelProgressBar";

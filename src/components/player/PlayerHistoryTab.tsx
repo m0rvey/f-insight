@@ -6,7 +6,7 @@ interface PlayerHistoryTabProps {
   stats: FaceitPlayerFullStats;
 }
 
-export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => {
+export const PlayerHistoryTab = React.memo<PlayerHistoryTabProps>(({ stats }) => {
   const matches = stats.recentMatches || [];
 
   if (matches.length === 0) {
@@ -26,8 +26,10 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
   const totalKills = matches.reduce((acc, m) => acc + (m.kills || 0), 0);
   const totalDeaths = matches.reduce((acc, m) => acc + (m.deaths || 0), 0);
   const avgKd = totalDeaths > 0 ? parseFloat((totalKills / totalDeaths).toFixed(2)) : 1.0;
-  const avgAdr = Math.round(matches.reduce((acc, m) => acc + (m.adr || 75), 0) / totalGames);
-  const avgHs = Math.round(matches.reduce((acc, m) => acc + (m.hsPercent || 45), 0) / totalGames);
+  const adrValues = matches.map((m) => m.adr).filter((a): a is number => a !== undefined && a > 0);
+  const avgAdr = adrValues.length > 0 ? Math.round(adrValues.reduce((acc, a) => acc + a, 0) / adrValues.length) : undefined;
+  const hsValues = matches.map((m) => m.hsPercent).filter((v): v is number => v !== undefined);
+  const avgHs = hsValues.length > 0 ? Math.round(hsValues.reduce((acc, v) => acc + v, 0) / hsValues.length) : undefined;
 
   const netElo = matches.reduce((acc, m) => acc + (m.eloDiff || (m.result === 'W' ? 25 : -25)), 0);
 
@@ -50,7 +52,7 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
         </div>
 
         <div className="grid grid-cols-4 gap-2 text-center font-mono">
-          <div className="bg-black/40 rounded-lg p-2 border border-white/5">
+          <div className="stat-cell p-2">
             <div className="text-[9px] text-zinc-400 font-sans uppercase">Win / Loss</div>
             <div className="text-xs font-bold text-zinc-100 mt-0.5">
               <span className="text-emerald-400">{wins}W</span> - <span className="text-red-400">{losses}L</span>
@@ -58,7 +60,7 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
             </div>
           </div>
 
-          <div className="bg-black/40 rounded-lg p-2 border border-white/5">
+          <div className="stat-cell p-2">
             <div className="text-[9px] text-zinc-400 font-sans uppercase">Recent K/D</div>
             <div
               className={`text-xs font-bold mt-0.5 ${
@@ -69,14 +71,14 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
             </div>
           </div>
 
-          <div className="bg-black/40 rounded-lg p-2 border border-white/5">
+          <div className="stat-cell p-2">
             <div className="text-[9px] text-zinc-400 font-sans uppercase">Recent ADR</div>
-            <div className="text-xs font-bold text-zinc-100 mt-0.5">{avgAdr}</div>
+            <div className="text-xs font-bold text-zinc-100 mt-0.5">{avgAdr ?? '—'}</div>
           </div>
 
-          <div className="bg-black/40 rounded-lg p-2 border border-white/5">
+          <div className="stat-cell p-2">
             <div className="text-[9px] text-zinc-400 font-sans uppercase">Recent HS%</div>
-            <div className="text-xs font-bold text-zinc-100 mt-0.5">{avgHs}%</div>
+            <div className="text-xs font-bold text-zinc-100 mt-0.5">{avgHs !== undefined ? `${avgHs}%` : '—'}</div>
           </div>
         </div>
       </div>
@@ -105,7 +107,7 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
                   </span>
                   {m.eloDiff !== undefined && (
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
                         m.eloDiff > 0
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                           : m.eloDiff < 0
@@ -137,19 +139,19 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
               <div className="text-right min-w-[45px]">
                 <div
                   className={`font-bold ${
-                    m.kd >= 1.3 ? 'text-emerald-400' : m.kd < 0.9 ? 'text-red-400' : 'text-zinc-200'
+                    m.kd >= 1.25 ? 'text-emerald-400' : m.kd < 0.95 ? 'text-red-400' : 'text-zinc-200'
                   }`}
                 >
-                  {m.kd.toFixed(2)}
+                  {m.kd?.toFixed(2) ?? '—'}
                 </div>
                 <div className="text-[10px] text-faceit-muted font-sans">K/D</div>
               </div>
               <div className="text-right min-w-[40px]">
-                <div className="text-zinc-300 font-bold">{m.adr ? Math.round(m.adr) : 78}</div>
+                <div className="text-zinc-300 font-bold">{m.adr ?? '—'}</div>
                 <div className="text-[10px] text-faceit-muted font-sans">ADR</div>
               </div>
               <div className="text-right min-w-[35px]">
-                <div className="text-zinc-300">{Math.round(m.hsPercent)}%</div>
+                <div className="text-zinc-300">{m.hsPercent != null ? `${Math.round(m.hsPercent)}%` : '—'}</div>
                 <div className="text-[10px] text-faceit-muted font-sans">HS</div>
               </div>
             </div>
@@ -158,4 +160,5 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({ stats }) => 
       </div>
     </div>
   );
-};
+});
+PlayerHistoryTab.displayName = "PlayerHistoryTab";

@@ -14,7 +14,7 @@ interface TeamCardProps {
   isUserTeam?: boolean;
 }
 
-export const TeamCard: React.FC<TeamCardProps> = ({
+export const TeamCard = React.memo<TeamCardProps>(({
   factionId,
   teamName,
   winChance,
@@ -30,7 +30,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
   const isF1 = factionId === 1;
 
   return (
-    <div className={`md:col-span-5 bg-[#17171B]/90 hover:bg-[#1B1B20]/95 rounded-xl p-4 border transition-all duration-200 shadow-sm ${
+    <div className={`md:col-span-5 bg-faceit-card/90 hover:bg-faceit-card-hover/95 rounded-xl p-4 border transition-all duration-200 shadow-sm ${
       isUserTeam
         ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.12)] bg-cyan-950/10'
         : isF1
@@ -41,9 +41,9 @@ export const TeamCard: React.FC<TeamCardProps> = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-2 ring-blue-500/30" />
-            <span className="font-extrabold text-sm text-zinc-100 truncate max-w-[150px]">{teamName}</span>
+            <span className="font-extrabold text-sm text-zinc-100 min-w-0 flex-1 truncate">{teamName}</span>
             {isUserTeam && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
                 YOU
               </span>
             )}
@@ -68,9 +68,9 @@ export const TeamCard: React.FC<TeamCardProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="font-extrabold text-sm text-zinc-100 truncate max-w-[150px]">{teamName}</span>
+            <span className="font-extrabold text-sm text-zinc-100 min-w-0 flex-1 truncate">{teamName}</span>
             {isUserTeam && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 font-black">
                 YOU
               </span>
             )}
@@ -80,29 +80,30 @@ export const TeamCard: React.FC<TeamCardProps> = ({
       )}
 
       <div className="grid grid-cols-5 gap-2 text-center font-mono">
-        <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+        <div className="stat-cell p-2">
           <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg Elo</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgElo}</div>
         </div>
-        <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+        <div className="stat-cell p-2">
           <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg K/D</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgKd}</div>
         </div>
-        <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+        <div className="stat-cell p-2">
           <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg ADR</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgAdr}</div>
         </div>
-        <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+        <div className="stat-cell p-2">
           <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg HS%</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgHsPercent}%</div>
         </div>
-        <div className="bg-black/40 rounded-lg p-2 border border-white/5 hover:border-white/10 transition">
+        <div className="stat-cell p-2">
           <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
-          <div className={`text-xs font-bold mt-0.5 capitalize truncate ${isF1 ? 'text-blue-400' : 'text-orange-400'}`}>
-            {topMap ? topMap.name : 'Mirage'}
+          <div className={`text-sm font-bold mt-0.5 capitalize truncate ${isF1 ? 'text-blue-400' : 'text-orange-400'}`}>
+            {topMap ? topMap.name : '—'}
           </div>
         </div>
       </div>
     </div>
   );
-};
+});
+TeamCard.displayName = "TeamCard";

@@ -33,6 +33,7 @@ export const QuickControls: React.FC<QuickControlsProps> = ({
           <button
             onClick={onRefresh}
             disabled={isLoading}
+            aria-label="Refresh match data"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-bold text-zinc-200 hover:text-white transition active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-faceit-orange' : 'text-zinc-400'}`} />
@@ -41,6 +42,7 @@ export const QuickControls: React.FC<QuickControlsProps> = ({
 
           <button
             onClick={onToggleVisibility}
+            aria-label={isVisible ? 'Hide HUD' : 'Show HUD'}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-bold text-zinc-200 hover:text-white transition active:scale-95"
           >
             {isVisible ? <EyeOff className="w-3.5 h-3.5 text-zinc-400" /> : <Eye className="w-3.5 h-3.5 text-faceit-orange" />}
@@ -52,6 +54,8 @@ export const QuickControls: React.FC<QuickControlsProps> = ({
       {/* Main trigger button */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-label={isExpanded ? 'Collapse f-insight controls' : 'Expand f-insight controls'}
+        aria-expanded={isExpanded}
         className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#16161A]/95 hover:bg-[#1C1C22] border border-faceit-orange/50 hover:border-faceit-orange text-white shadow-glow-orange transition-all duration-200 group active:scale-95"
         title="f-insight Match HUD Controls"
       >

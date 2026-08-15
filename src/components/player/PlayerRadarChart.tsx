@@ -5,28 +5,42 @@ interface PlayerRadarChartProps {
   stats: FaceitPlayerFullStats;
 }
 
-export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => {
+export const PlayerRadarChart = React.memo<PlayerRadarChartProps>(({ stats }) => {
+  const kd30 = stats.last30Kd ?? stats.overallKd;
+  const adr30 = stats.last30Adr ?? stats.overallAdr ?? 75;
   // Normalize each metric to a 0 - 100 scale for clean pentagon geometry
-  const kdNorm = Math.min(100, Math.max(10, ((stats.overallKd - 0.6) / 1.0) * 100));
-  const adrNorm = Math.min(100, Math.max(10, ((stats.overallAdr - 50) / 60) * 100));
-  const hsNorm = Math.min(100, Math.max(10, ((stats.overallHsPercent - 20) / 50) * 100));
-  const wrNorm = Math.min(100, Math.max(10, ((stats.overallWinRate - 35) / 40) * 100));
+  const kdNorm = Math.min(100, Math.max(5, ((kd30 - 0.6) / 1.0) * 100));
+  const adrNorm = Math.min(100, Math.max(5, ((adr30 - 50) / 60) * 100));
+  const hsNorm = Math.min(100, Math.max(5, ((stats.overallHsPercent - 20) / 50) * 100));
+  const wrNorm = Math.min(100, Math.max(5, ((stats.overallWinRate - 35) / 40) * 100));
   
   const fcrVal = stats.fcrContributionPercent ?? 20;
   const formBonus = stats.formStatus === 'HOT' ? 15 : stats.formStatus === 'COLD' ? -15 : 0;
-  const impactNorm = Math.min(100, Math.max(10, ((fcrVal - 10) / 20) * 100 + formBonus));
+  const impactNorm = Math.min(100, Math.max(5, ((fcrVal - 10) / 20) * 100 + formBonus));
 
   const axes = [
-    { label: 'Firepower', value: stats.overallKd.toFixed(2), raw: kdNorm, sub: 'K/D' },
-    { label: 'Damage', value: Math.round(stats.overallAdr).toString(), raw: adrNorm, sub: 'ADR' },
-    { label: 'Precision', value: `${Math.round(stats.overallHsPercent)}%`, raw: hsNorm, sub: 'HS%' },
     { label: 'Winrate', value: `${Math.round(stats.overallWinRate)}%`, raw: wrNorm, sub: 'WIN' },
-    { label: 'Impact', value: `${fcrVal}%`, raw: impactNorm, sub: 'FCR' },
+    { label: 'K/D', value: kd30.toFixed(2), raw: kdNorm, sub: 'K/D' },
+    { label: 'HS%', value: `${Math.round(stats.overallHsPercent)}%`, raw: hsNorm, sub: 'HS%' },
+    { label: 'ADR', value: Math.round(adr30).toString(), raw: adrNorm, sub: 'ADR' },
+    { label: 'Kills', value: `${fcrVal}%`, raw: impactNorm, sub: 'FCR' },
   ];
 
-  const size = 220;
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [size, setSize] = React.useState(240);
+
+  React.useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setSize(Math.max(180, Math.min(240, el.clientWidth)));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const center = size / 2;
-  const maxRadius = 75;
+  const maxRadius = (size / 240) * 75;
 
   // Compute pentagon coordinates for background rings and data points
   const getCoordinates = (radius: number, index: number) => {
@@ -57,7 +71,7 @@ export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => 
         </span>
       </div>
 
-      <div className="relative w-[220px] h-[220px] flex items-center justify-center">
+      <div ref={containerRef} className="relative w-full max-w-[240px] aspect-square flex items-center justify-center">
         <svg width={size} height={size} className="overflow-visible">
           {/* Background Grid Rings */}
           {rings.map((ring, idx) => {
@@ -125,7 +139,7 @@ export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => 
 
         {/* Outer Axis Labels */}
         {axes.map((axis, i) => {
-          const { x, y } = getCoordinates(maxRadius + 22, i);
+          const { x, y } = getCoordinates(maxRadius + 14, i);
           return (
             <div
               key={i}
@@ -144,4 +158,5 @@ export const PlayerRadarChart: React.FC<PlayerRadarChartProps> = ({ stats }) => 
       </div>
     </div>
   );
-};
+});
+PlayerRadarChart.displayName = "PlayerRadarChart";
