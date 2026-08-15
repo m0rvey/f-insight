@@ -241,12 +241,22 @@ export function parsePlayerPayload(
   };
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class FaceitApiService {
   private inFlightMatch = new Map<string, Promise<FaceitMatchDetails | null>>();
   private inFlightPlayer = new Map<string, Promise<FaceitPlayerFullStats | null>>();
 
   async getMatchDetails(matchId: string): Promise<FaceitMatchDetails | null> {
-    if (!matchId) return null;
+    if (!matchId || !/^[a-zA-Z0-9.\-_]+$/.test(matchId)) return null;
     if (this.inFlightMatch.has(matchId)) {
       return this.inFlightMatch.get(matchId)!;
     }
@@ -261,7 +271,7 @@ export class FaceitApiService {
 
   private async fetchMatchDetailsInternal(matchId: string): Promise<FaceitMatchDetails | null> {
     try {
-      const res = await fetch(`https://api.faceit.com/match/v2/match/${matchId}`, {
+      const res = await fetchWithTimeout(`https://api.faceit.com/match/v2/match/${encodeURIComponent(matchId)}`, {
         headers: { Accept: 'application/json' },
       });
 
@@ -280,7 +290,7 @@ export class FaceitApiService {
   }
 
   async getPlayerStats(playerId: string, fallbackNickname?: string): Promise<FaceitPlayerFullStats | null> {
-    if (!playerId) return null;
+    if (!playerId || !/^[a-zA-Z0-9.\-_]+$/.test(playerId)) return null;
     const cacheKey = `${playerId}_${fallbackNickname || ''}`;
     if (this.inFlightPlayer.has(cacheKey)) {
       return this.inFlightPlayer.get(cacheKey)!;
@@ -296,11 +306,12 @@ export class FaceitApiService {
 
   private async fetchPlayerStatsInternal(playerId: string, fallbackNickname?: string): Promise<FaceitPlayerFullStats | null> {
     try {
+      const encodedId = encodeURIComponent(playerId);
       const [userRes, statsRes, historyRes, csgoStatsRes] = await Promise.allSettled([
-        fetch(`https://api.faceit.com/users/v1/users/${playerId}`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/cs2`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://api.faceit.com/stats/v1/stats/time/users/${playerId}/games/cs2?size=30`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://api.faceit.com/stats/v1/stats/users/${playerId}/games/csgo`, { headers: { Accept: 'application/json' } }),
+        fetchWithTimeout(`https://api.faceit.com/users/v1/users/${encodedId}`, { headers: { Accept: 'application/json' } }),
+        fetchWithTimeout(`https://api.faceit.com/stats/v1/stats/users/${encodedId}/games/cs2`, { headers: { Accept: 'application/json' } }),
+        fetchWithTimeout(`https://api.faceit.com/stats/v1/stats/time/users/${encodedId}/games/cs2?size=30`, { headers: { Accept: 'application/json' } }),
+        fetchWithTimeout(`https://api.faceit.com/stats/v1/stats/users/${encodedId}/games/csgo`, { headers: { Accept: 'application/json' } }),
       ]);
 
       let user: any = null;

@@ -17,7 +17,30 @@ export class DomObserver {
   startObserving(onUpdate: () => void) {
     this.stopObserving();
 
-    this.observer = new MutationObserver(() => {
+    this.observer = new MutationObserver((mutations) => {
+      // 1. Filter mutations: ignore our own injected containers and known noise
+      let isRelevant = false;
+      for (let i = 0; i < mutations.length; i++) {
+        const target = mutations[i].target as HTMLElement | null;
+        if (!target) continue;
+
+        // Skip our own shadow DOM roots / hosts
+        if (target.id?.startsWith?.('f-insight-') || (target.closest && target.closest('[id^="f-insight-"]'))) {
+          continue;
+        }
+
+        // Skip live chat, clock timers, notifications which fire continuously
+        const className = typeof target.className === 'string' ? target.className : '';
+        if (className.includes('chat') || className.includes('timer') || className.includes('clock') || className.includes('toast')) {
+          continue;
+        }
+
+        isRelevant = true;
+        break;
+      }
+
+      if (!isRelevant) return;
+
       this.targetsDirty = true;
       const now = performance.now();
       

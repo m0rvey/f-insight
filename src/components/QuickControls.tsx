@@ -9,7 +9,7 @@ interface QuickControlsProps {
   highRiskCount: number;
 }
 
-export const QuickControls: React.FC<QuickControlsProps> = ({
+export const QuickControls = React.memo<QuickControlsProps>(({
   onRefresh,
   isLoading,
   isVisible,
@@ -72,4 +72,5 @@ export const QuickControls: React.FC<QuickControlsProps> = ({
       </button>
     </div>
   );
-};
+});
+QuickControls.displayName = 'QuickControls';

@@ -73,11 +73,21 @@ export function parseSteamProfileXml(xmlText: string, steamId64: string): SteamF
   };
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 6000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class SteamApiService {
   private inFlightSteam = new Map<string, Promise<SteamFullData>>();
 
   async getPlayerFullData(steamId64: string): Promise<SteamFullData> {
-    if (!steamId64) {
+    if (!steamId64 || !/^\d{5,25}$/.test(steamId64)) {
       return { isPrivate: true, fetchedAt: Date.now() };
     }
 
@@ -95,7 +105,7 @@ export class SteamApiService {
 
   private async fetchSteamDataInternal(steamId64: string): Promise<SteamFullData> {
     try {
-      const res = await fetch(`https://steamcommunity.com/profiles/${steamId64}/?xml=1`);
+      const res = await fetchWithTimeout(`https://steamcommunity.com/profiles/${steamId64}/?xml=1`);
       if (!res.ok) {
         return { isPrivate: true, fetchError: true, fetchedAt: Date.now() };
       }

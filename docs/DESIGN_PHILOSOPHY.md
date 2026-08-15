@@ -31,3 +31,11 @@
 - `f-insight` is **strictly client-side and read-only by default**.
 - It does not modify game files, memory, or network packets.
 - All cached profiles are stored locally on the player's machine in `chrome.storage.local`.
+
+### 6. ⚡ Zero-Lag & Non-Invasive Performance
+- **The Problem**: Heavy background polling, unthrottled DOM mutations, and duplicate network requests degrade browser performance, causing FPS drops or lag during gameplay.
+- **The Solution**: 
+  - Throttled DOM observation (60ms `rAF` buffering) that ignores irrelevant mutations (chat, timers, self-hosts).
+  - In-flight request deduplication across concurrent tabs.
+  - Bounded LRU in-memory caches (500 entries) preventing browser memory bloat.
+  - Sub-second build pipeline with 97% fewer transformed modules.

@@ -8,6 +8,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, '..');
 
+function optimizeLucidePlugin() {
+  return {
+    name: 'optimize-lucide-imports',
+    transform(code, id) {
+      if (!id.includes('node_modules') && code.includes('lucide-react')) {
+        const importRegex = /import\s*\{([^}]+)\}\s*from\s*['"]lucide-react['"]/g;
+        const newCode = code.replace(importRegex, (_, specifiers) => {
+          const names = specifiers.split(',').map((s) => s.trim()).filter(Boolean);
+          const lines = names.map((name) => {
+            const [imported, local] = name.split(/\s+as\s+/);
+            const iconName = imported.trim();
+            const alias = local ? local.trim() : iconName;
+            if (iconName === 'LucideIcon' || iconName === 'Icon' || iconName === 'LucideProps') {
+              return `import type { ${iconName} } from 'lucide-react';`;
+            }
+            const kebab = iconName
+              .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+              .replace(/([a-zA-Z])([0-9]+)/g, '$1-$2')
+              .toLowerCase();
+            return `import ${alias} from 'lucide-react/dist/esm/icons/${kebab}.mjs';`;
+          });
+          return lines.join('\n');
+        });
+        return { code: newCode, map: null };
+      }
+      return null;
+    },
+  };
+}
+
 async function buildExtension() {
   console.log('🚀 Building optimized production f-insight extension...');
 
@@ -17,12 +47,14 @@ async function buildExtension() {
   }
   fs.mkdirSync(distDir, { recursive: true });
 
+  const lucidePlugin = optimizeLucidePlugin();
+
   // 1. Build Popup (HTML + React app)
   console.log('📦 1/3 Building Popup UI...');
   await build({
     root: rootDir,
     configFile: false,
-    plugins: [react()],
+    plugins: [lucidePlugin, react()],
     resolve: {
       alias: {
         '@': resolve(rootDir, 'src'),
@@ -31,15 +63,20 @@ async function buildExtension() {
     esbuild: {
       legalComments: 'none',
       treeShaking: true,
+      target: 'es2022',
+      drop: ['debugger'],
     },
     build: {
       outDir: 'dist',
       emptyOutDir: false,
       minify: 'esbuild',
       cssMinify: true,
-      target: 'es2020',
+      target: 'es2022',
       rollupOptions: {
-        treeshake: 'recommended',
+        treeshake: {
+          preset: 'smallest',
+          moduleSideEffects: (id) => !id.includes('lucide-react'),
+        },
         input: {
           popup: resolve(rootDir, 'popup.html'),
         },
@@ -68,19 +105,23 @@ async function buildExtension() {
     esbuild: {
       legalComments: 'none',
       treeShaking: true,
+      target: 'es2022',
+      drop: ['debugger'],
     },
     build: {
       outDir: 'dist',
       emptyOutDir: false,
       minify: 'esbuild',
-      target: 'es2020',
+      target: 'es2022',
       lib: {
         entry: resolve(rootDir, 'src/background/index.ts'),
         formats: ['es'],
         fileName: () => 'background.js',
       },
       rollupOptions: {
-        treeshake: 'recommended',
+        treeshake: {
+          preset: 'smallest',
+        },
         output: {
           inlineDynamicImports: true,
           entryFileNames: 'background.js',
@@ -94,7 +135,7 @@ async function buildExtension() {
   await build({
     root: rootDir,
     configFile: false,
-    plugins: [react()],
+    plugins: [lucidePlugin, react()],
     resolve: {
       alias: {
         '@': resolve(rootDir, 'src'),
@@ -106,13 +147,15 @@ async function buildExtension() {
     esbuild: {
       legalComments: 'none',
       treeShaking: true,
+      target: 'es2022',
+      drop: ['debugger'],
     },
     build: {
       outDir: 'dist',
       emptyOutDir: false,
       minify: 'esbuild',
       cssMinify: true,
-      target: 'es2020',
+      target: 'es2022',
       lib: {
         entry: resolve(rootDir, 'src/content/index.tsx'),
         formats: ['iife'],
@@ -120,7 +163,10 @@ async function buildExtension() {
         fileName: () => 'content.js',
       },
       rollupOptions: {
-        treeshake: 'recommended',
+        treeshake: {
+          preset: 'smallest',
+          moduleSideEffects: (id) => !id.includes('lucide-react'),
+        },
         output: {
           inlineDynamicImports: true,
           entryFileNames: 'content.js',

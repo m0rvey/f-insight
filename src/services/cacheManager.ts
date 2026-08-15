@@ -8,14 +8,30 @@ export const TTL = {
   MATCH: 3 * 60 * 1000,        // 3 minutes
   PLAYER_STATS: 60 * 60 * 1000, // 1 hour (Aggressive caching)
   STEAM_PROFILE: 24 * 60 * 60 * 1000, // 24 hours
+  NEGATIVE: 3 * 60 * 1000,     // 3 minutes for failed / unreachable queries
   SETTINGS: Number.MAX_SAFE_INTEGER,
 } as const;
+
+const MAX_MEMORY_ENTRIES = 500;
 
 class CacheManager {
   private memoryCache: Map<string, CacheEntry<unknown>> = new Map();
 
   private isChromeStorageAvailable(): boolean {
     return typeof chrome !== 'undefined' && !!chrome.storage?.local;
+  }
+
+  private enforceMemoryLimit() {
+    if (this.memoryCache.size <= MAX_MEMORY_ENTRIES) return;
+    // Map entries are ordered by insertion; delete the oldest non-settings entries
+    const iter = this.memoryCache.keys();
+    while (this.memoryCache.size > MAX_MEMORY_ENTRIES) {
+      const next = iter.next();
+      if (next.done) break;
+      if (next.value !== 'settings') {
+        this.memoryCache.delete(next.value);
+      }
+    }
   }
 
   async get<T>(key: string): Promise<T | null> {
@@ -25,6 +41,9 @@ class CacheManager {
     const memItem = this.memoryCache.get(key);
     if (memItem) {
       if (now - memItem.cachedAt < memItem.ttlMs) {
+        // Refresh LRU order on hit
+        this.memoryCache.delete(key);
+        this.memoryCache.set(key, memItem);
         return memItem.value as T;
       }
       this.memoryCache.delete(key);
@@ -37,8 +56,9 @@ class CacheManager {
         const entry = result[key] as CacheEntry<T> | undefined;
         if (entry && entry.cachedAt && entry.ttlMs) {
           if (now - entry.cachedAt < entry.ttlMs) {
-            // Populate memory cache for faster subsequent reads
+            // Populate memory cache for faster subsequent reads and enforce capacity
             this.memoryCache.set(key, entry);
+            this.enforceMemoryLimit();
             return entry.value;
           }
           // Expired: delete
@@ -59,7 +79,10 @@ class CacheManager {
       ttlMs,
     };
 
+    // If key exists, delete first so insertion order puts it at the end (MRU)
+    this.memoryCache.delete(key);
     this.memoryCache.set(key, entry);
+    this.enforceMemoryLimit();
 
     if (this.isChromeStorageAvailable()) {
       try {
@@ -154,3 +177,4 @@ class CacheManager {
 }
 
 export const cacheManager = new CacheManager();
+

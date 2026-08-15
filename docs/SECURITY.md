@@ -10,16 +10,16 @@
 
 | Category | Status | Details |
 |---|---|---|
-| **A01: Broken Access Control** | 🟢 PASSED | Extension background handler processes strictly typed internal messages. No unauthorized cross-origin messaging. |
+| **A01: Broken Access Control** | 🟢 PASSED | Extension background handler processes strictly typed internal messages. No unauthorized cross-origin messaging. Protocol links (`steam://connect`) strictly validate `IP:Port` format. |
 | **A02: Cryptographic Failures** | 🟢 PASSED | All communication with FACEIT and Steam uses strict TLS 1.3 (HTTPS). No plaintext credentials. |
-| **A03: Injection & XSS** | 🟢 PASSED | Zero `innerHTML`, `dangerouslySetInnerHTML`, or `eval()` usage. All dynamic URLs and player attributes are strictly sanitized with regex validation before rendering. |
+| **A03: Injection & XSS** | 🟢 PASSED | Zero `innerHTML`, `dangerouslySetInnerHTML`, or `eval()` usage. Dynamic parameters (`matchId`, `playerId`, `steamId64`) are strictly regex-validated and URL-encoded. |
 | **A04: Insecure Design** | 🟢 PASSED | Pure Shadow DOM isolation (`attachShadow({ mode: 'open' })`) ensures extension styles and components cannot tamper with or be manipulated by host page scripts. |
 | **A05: Security Misconfiguration** | 🟢 PASSED | Manifest V3 strict CSP enforced. Subdomains like `accounts.faceit.com` are explicitly excluded from content script injection. |
 | **A06: Vulnerable Components** | 🟢 PASSED | `npm audit` returned **0 vulnerabilities**. Dependencies are pinned and audited. |
 | **A07: Identification & Auth Failures** | 🟢 PASSED | Extension operates in 100% Zero-Config keyless mode. No user passwords or session tokens are stored or transmitted. |
 | **A08: Software & Data Integrity** | 🟢 PASSED | Single-file standalone IIFE bundle (`dist/content.js`) with zero remote script execution. |
 | **A09: Security Logging & Monitoring** | 🟢 PASSED | No sensitive user data or tokens logged to console. Errors sanitized. |
-| **A10: Server-Side Request Forgery** | 🟢 PASSED | All outbound requests are restricted strictly to `api.faceit.com` and `steamcommunity.com`. |
+| **A10: Server-Side Request Forgery** | 🟢 PASSED | Outbound requests are restricted to `api.faceit.com` and `steamcommunity.com` with numeric ID validation. |
 
 ---
 

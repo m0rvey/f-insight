@@ -29,5 +29,15 @@ export default {
       }
     },
   },
+  corePlugins: {
+    float: false,
+    clear: false,
+    container: false,
+    touchAction: false,
+    scrollSnapType: false,
+    scrollSnapAlign: false,
+    scrollSnapStop: false,
+    columns: false,
+  },
   plugins: [],
 }

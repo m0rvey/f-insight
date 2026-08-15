@@ -209,15 +209,13 @@ export class AutoActionsEngine {
 
   private checkAutoInactiveDismiss() {
     // Dismiss "Are you still here?" AFK inactivity modal
-    const buttons = document.querySelectorAll('button, [role="button"]');
+    const modalParent = document.querySelector('[role="dialog"], [class*="Modal"], [class*="modal"], [class*="popup"]');
+    if (!modalParent) return;
 
+    const buttons = modalParent.querySelectorAll('button, [role="button"]');
     for (const btn of buttons) {
       const text = textOf(btn);
-      if (!isButtonTextMatch(text, [AFK_REGEX])) continue;
-
-      // Confirm it's inside a modal or dialog
-      const modalParent = btn.closest('[role="dialog"], [class*="Modal"], [class*="modal"], [class*="popup"]');
-      if (modalParent) {
+      if (isButtonTextMatch(text, [AFK_REGEX])) {
         if (this.clickElementSafely(btn, 'afk', 'AFK Inactivity Check Dismiss')) {
           break;
         }
@@ -227,17 +225,16 @@ export class AutoActionsEngine {
 
   private checkAutoQueueContinue() {
     // Continue search when match aborted because someone failed to ready up
-    const buttons = document.querySelectorAll('[data-testid*="continue"], [class*="queue"] button, [role="dialog"] button');
+    const queueContainer = document.querySelector('[role="dialog"], [class*="queue"], [class*="Queue"], [class*="modal"], [class*="Modal"], [data-testid*="continue"]');
+    if (!queueContainer) return;
 
+    const buttons = queueContainer.querySelectorAll('button, [role="button"]');
     for (const btn of buttons) {
       const text = textOf(btn);
-      if (!isButtonTextMatch(text, [QUEUE_CONT_REGEX])) continue;
-
-      // Bare "CONTINUE" can appear in settings/dialogs unrelated to matchmaking
-      if (!btn.closest('[role="dialog"], [class*="queue"], [class*="Queue"], [class*="modal"], [class*="Modal"]')) continue;
-
-      if (this.clickElementSafely(btn, 'queue', 'Queue Auto-Continue Search')) {
-        break;
+      if (isButtonTextMatch(text, [QUEUE_CONT_REGEX])) {
+        if (this.clickElementSafely(btn, 'queue', 'Queue Auto-Continue Search')) {
+          break;
+        }
       }
     }
   }

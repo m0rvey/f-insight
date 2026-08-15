@@ -24,4 +24,17 @@ describe('cacheManager', () => {
     const val = await cacheManager.get('test:remove');
     expect(val).toBeNull();
   });
+
+  it('should enforce memory bounds without dropping settings', async () => {
+    await cacheManager.set('settings', { autoReadyUp: true }, 100000);
+    for (let i = 0; i < 520; i++) {
+      await cacheManager.set(`test:key:${i}`, { index: i }, 100000);
+    }
+    const stats = await cacheManager.getStats();
+    expect(stats.totalEntries).toBeLessThanOrEqual(501);
+
+    // Settings must be preserved
+    const settings = await cacheManager.get<{ autoReadyUp: boolean }>('settings');
+    expect(settings).toEqual({ autoReadyUp: true });
+  });
 });

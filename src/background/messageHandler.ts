@@ -52,11 +52,15 @@ async function mapWithConcurrency<T, R>(
 export class BackgroundMessageHandler {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private initialized = false;
+  private inFlightStreams = new Map<string, Promise<void>>();
+  private streamSubscribers = new Map<string, Set<number>>();
 
   async init() {
     if (this.initialized) return;
     await this.loadSettings();
     this.initialized = true;
+    // Opportunistic cache cleanup on startup
+    cacheManager.cleanup().catch(() => {});
   }
 
   async loadSettings(): Promise<ExtensionSettings> {
@@ -119,27 +123,47 @@ export class BackgroundMessageHandler {
       return { success: false, error: `Could not fetch match details for ${matchId}` };
     }
 
-    // Start background streaming
-    this.streamLobbyData(matchId, match, forceRefresh, sender).catch(err => console.error('[f-insight:Stream] Error:', err));
+    // Register tab subscriber for live updates
+    if (sender?.tab?.id) {
+      if (!this.streamSubscribers.has(matchId)) {
+        this.streamSubscribers.set(matchId, new Set());
+      }
+      this.streamSubscribers.get(matchId)!.add(sender.tab.id);
+    }
+
+    // Start or attach to background streaming
+    if (!this.inFlightStreams.has(matchId) || forceRefresh) {
+      const streamPromise = this.streamLobbyData(matchId, match, forceRefresh).finally(() => {
+        this.inFlightStreams.delete(matchId);
+        this.streamSubscribers.delete(matchId);
+      });
+      this.inFlightStreams.set(matchId, streamPromise);
+    }
 
     return { success: true, data: { match, isPartial: true } };
   }
 
-  private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
+  private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean) {
     try {
-      await this.streamLobbyDataInner(matchId, match, forceRefresh, sender);
+      await this.streamLobbyDataInner(matchId, match, forceRefresh);
     } catch (err: any) {
       console.error('[f-insight:Stream] Error:', err);
-      if (sender?.tab?.id) {
-        this.safeSendToTab(sender.tab.id, {
-          type: 'LOBBY_ANALYSIS_ERROR',
-          payload: { matchId, error: err?.message || 'Match analysis stream failed' },
-        });
-      }
+      this.broadcastToSubscribers(matchId, {
+        type: 'LOBBY_ANALYSIS_ERROR',
+        payload: { matchId, error: err?.message || 'Match analysis stream failed' },
+      });
     }
   }
 
-  private async streamLobbyDataInner(matchId: string, match: any, forceRefresh: boolean, sender?: chrome.runtime.MessageSender) {
+  private broadcastToSubscribers(matchId: string, message: any) {
+    const tabs = this.streamSubscribers.get(matchId);
+    if (!tabs || tabs.size === 0) return;
+    for (const tabId of tabs) {
+      this.safeSendToTab(tabId, message);
+    }
+  }
+
+  private async streamLobbyDataInner(matchId: string, match: any, forceRefresh: boolean) {
     const cacheKey = `match_analysis:${matchId}`;
     const f1Roster = match.teams?.faction1?.roster || [];
     const f2Roster = match.teams?.faction2?.roster || [];
@@ -202,12 +226,10 @@ export class BackgroundMessageHandler {
           // 3. Red Flags Risk Score
           riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
 
-          if (sender?.tab?.id) {
-            this.safeSendToTab(sender.tab.id, {
-              type: 'PLAYER_STATS_UPDATE',
-              payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] },
-            });
-          }
+          this.broadcastToSubscribers(matchId, {
+            type: 'PLAYER_STATS_UPDATE',
+            payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] },
+          });
         }
       },
       200
@@ -304,12 +326,10 @@ export class BackgroundMessageHandler {
     };
 
     await cacheManager.set(cacheKey, out, TTL.MATCH);
-    if (sender?.tab?.id) {
-       this.safeSendToTab(sender.tab.id, {
-         type: 'LOBBY_ANALYSIS_COMPLETE',
-         payload: out
-       });
-    }
+    this.broadcastToSubscribers(matchId, {
+      type: 'LOBBY_ANALYSIS_COMPLETE',
+      payload: out,
+    });
   }
 
   private safeSendToTab(tabId: number, message: any) {

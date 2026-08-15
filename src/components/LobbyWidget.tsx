@@ -20,7 +20,7 @@ interface LobbyWidgetProps {
   rankedMaps?: MapVetoRankItem[];
 }
 
-export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
+export const LobbyWidget = React.memo<LobbyWidgetProps>(({
   payload,
   isLoading,
   onRefresh,
@@ -59,4 +59,5 @@ export const LobbyWidget: React.FC<LobbyWidgetProps> = ({
       )}
     </div>
   );
-};
+});
+LobbyWidget.displayName = 'LobbyWidget';
