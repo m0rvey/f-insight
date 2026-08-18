@@ -13,7 +13,7 @@
 
 [Features](#-key-features) • [Installation](#-installation--quick-start) • [Documentation](#-documentation) • [Safety & ToS](#-safety--tos-compliance)
 
-**English** • [Русская версия](docs/README_RU.md)
+**English** • [Русская версия](README_RU.md)
 
 </div>
 
@@ -90,13 +90,13 @@
 
 ## 📚 Documentation
 
-Detailed documentation is available in the [`docs/`](docs/) directory:
+Detailed documentation is available in this directory:
 
-- 💻 **[Architecture & Code Documentation](docs/CODE_DOCUMENTATION.md)** — Data flow diagrams, module contracts, and mathematical models.
-- 🎯 **[Design Philosophy](docs/DESIGN_PHILOSOPHY.md)** — Core ideology, Zero-Config rationale, and competitive analytics design.
-- 🛡️ **[Security Policy & OWASP Audit](docs/SECURITY.md)** — Security posture, permissions scope, and vulnerability disclosure policy.
-- 🤝 **[Contributing Guidelines](docs/CONTRIBUTING.md)** — Guidelines for contributors, code standards, and local development.
-- 📄 **[License (MIT)](docs/LICENSE)** — Open-source license terms.
+- 💻 **[Architecture & Code Documentation](CODE_DOCUMENTATION.md)** — Data flow diagrams, module contracts, and mathematical models.
+- 🎯 **[Design Philosophy](DESIGN_PHILOSOPHY.md)** — Core ideology, Zero-Config rationale, and competitive analytics design.
+- 🛡️ **[Security Policy & OWASP Audit](SECURITY.md)** — Security posture, permissions scope, and vulnerability disclosure policy.
+- 🤝 **[Contributing Guidelines](CONTRIBUTING.md)** — Guidelines for contributors, code standards, and local development.
+- 📄 **[License (MIT)](../LICENSE)** — Open-source license terms.
 
 ---
 
@@ -110,4 +110,4 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](../LICENSE).
