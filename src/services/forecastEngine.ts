@@ -15,7 +15,9 @@ export function calculateProjectedElo(
   f1AvgElo: number,
   f2AvgElo: number
 ): { faction1: ProjectedElo; faction2: ProjectedElo } {
-  const eloDiff = f2AvgElo - f1AvgElo;
+  const safeF1 = Number.isFinite(f1AvgElo) ? Math.max(100, Math.min(6000, f1AvgElo)) : 1000;
+  const safeF2 = Number.isFinite(f2AvgElo) ? Math.max(100, Math.min(6000, f2AvgElo)) : 1000;
+  const eloDiff = safeF2 - safeF1;
   const expectedF1 = 1 / (1 + Math.pow(10, eloDiff / 400));
   const expectedF2 = 1 - expectedF1;
 
@@ -46,20 +48,24 @@ export function calculateTeamFcr(
   teamPlayers: FaceitPlayerFullStats[]
 ): Record<string, number> {
   const result: Record<string, number> = {};
-  if (teamPlayers.length === 0) return result;
+  if (!teamPlayers || teamPlayers.length === 0) return result;
 
   const powers = teamPlayers.map((p) => {
-    const eloWeight = Math.max(500, p.elo || 1000) / 1000;
-    const kdWeight = Math.max(0.4, p.last30Kd ?? p.overallKd ?? 1.0);
-    const adrWeight = 1 + ((p.last30Adr ?? p.overallAdr ?? 75) - 75) / 150;
+    const rawElo = Number.isFinite(p.elo) ? p.elo : 1000;
+    const eloWeight = Math.max(500, rawElo || 1000) / 1000;
+    const rawKd = Number.isFinite(p.last30Kd) ? p.last30Kd : (Number.isFinite(p.overallKd) ? p.overallKd : 1.0);
+    const kdWeight = Math.max(0.4, rawKd ?? 1.0);
+    const rawAdr = Number.isFinite(p.last30Adr) ? p.last30Adr : (Number.isFinite(p.overallAdr) ? p.overallAdr : 75);
+    const adrWeight = 1 + ((rawAdr ?? 75) - 75) / 150;
     const power = eloWeight * kdWeight * Math.max(0.6, adrWeight);
-    return { id: p.playerId, power };
+    return { id: p.playerId, power: Number.isFinite(power) && power > 0 ? power : 1.0 };
   });
 
   const totalPower = powers.reduce((sum, item) => sum + item.power, 0);
+  const safeTotalPower = Number.isFinite(totalPower) && totalPower > 0 ? totalPower : 0;
 
   for (const item of powers) {
-    const percent = totalPower > 0 ? (item.power / totalPower) * 100 : 100 / teamPlayers.length;
+    const percent = safeTotalPower > 0 ? (item.power / safeTotalPower) * 100 : 100 / teamPlayers.length;
     result[item.id] = parseFloat(percent.toFixed(1));
   }
 
@@ -74,28 +80,36 @@ export function evaluatePlayerForm(
   overallKd?: number,
   overallAdr?: number
 ): { formStatus: PlayerFormStatus; recentKd: number; recentAdr: number } {
+  const baselineKd = Number.isFinite(overallKd) ? Math.max(0.5, overallKd!) : 1.0;
+  const baselineAdr = Number.isFinite(overallAdr) ? Math.max(20, overallAdr!) : 75;
+
   if (!recentMatches || recentMatches.length < 2) {
     return {
       formStatus: 'STABLE',
-      recentKd: overallKd || 1.0,
-      recentAdr: overallAdr || 75,
+      recentKd: baselineKd,
+      recentAdr: baselineAdr,
     };
   }
 
   const last5 = recentMatches.slice(0, 5);
-  const totalKills = last5.reduce((sum, m) => sum + (m.kills || 0), 0);
-  const totalDeaths = last5.reduce((sum, m) => sum + (m.deaths || 0), 0);
-  // 0 deaths (or 0/0) is a degenerate sample — fall back to the lifetime baseline
-  const recentKd = totalDeaths > 0
-    ? parseFloat((totalKills / totalDeaths).toFixed(2))
-    : parseFloat((overallKd || 1.0).toFixed(2));
+  const validMatches = last5.filter(
+    (m) => typeof m.kills === 'number' && Number.isFinite(m.kills) && typeof m.deaths === 'number' && Number.isFinite(m.deaths)
+  );
 
-  const validAdrs = last5.map((m) => m.adr).filter((a): a is number => a !== undefined && a > 0);
+  let recentKd = baselineKd;
+  if (validMatches.length > 0) {
+    const totalKills = validMatches.reduce((sum, m) => sum + (m.kills || 0), 0);
+    const totalDeaths = validMatches.reduce((sum, m) => sum + (m.deaths || 0), 0);
+    recentKd = totalDeaths > 0
+      ? parseFloat((totalKills / totalDeaths).toFixed(2))
+      : parseFloat(baselineKd.toFixed(2));
+  }
+
+  const validAdrs = last5.map((m) => m.adr).filter((a): a is number => typeof a === 'number' && Number.isFinite(a) && a > 0);
   const recentAdr = validAdrs.length > 0
     ? Math.round(validAdrs.reduce((sum, a) => sum + a, 0) / validAdrs.length)
-    : overallAdr || 75;
+    : baselineAdr;
 
-  const baselineKd = Math.max(0.5, overallKd || 1.0);
   const ratio = recentKd / baselineKd;
 
   let formStatus: PlayerFormStatus = 'STABLE';
