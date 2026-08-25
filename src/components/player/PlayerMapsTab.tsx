@@ -152,7 +152,7 @@ export const PlayerMapsTab = React.memo<PlayerMapsTabProps>(({ stats }) => {
                     <span className="font-extrabold text-zinc-100 capitalize font-sans block">
                       {m.mapName}
                     </span>
-                    <span className="text-[10px] text-zinc-500">
+                    <span className="text-[10px] text-zinc-400">
                       {m.wins}W - {m.losses}L
                     </span>
                   </td>

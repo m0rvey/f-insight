@@ -24,7 +24,9 @@ export default {
       },
       boxShadow: {
         'glow-orange': '0 0 20px rgba(255, 85, 0, 0.35)',
+        'glow-soft-orange': '0 0 15px rgba(255, 85, 0, 0.15)',
         'glow-green': '0 0 15px rgba(16, 185, 129, 0.25)',
+        'glow-cyan': '0 0 14px rgba(6, 182, 212, 0.18)',
         'card': '0 12px 36px rgba(0, 0, 0, 0.75)'
       }
     },

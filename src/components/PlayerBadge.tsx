@@ -10,6 +10,7 @@ import {
   Zap,
   ExternalLink,
 } from 'lucide-react';
+import { RISK_LEVEL_BADGE_STYLES } from '../constants/riskStyles';
 
 interface PlayerBadgeProps {
   playerId: string;
@@ -23,13 +24,6 @@ interface PlayerBadgeProps {
   compact?: boolean;
   onOpenDetails: (playerId: string) => void;
 }
-
-const RISK_BADGE_STYLES: Record<string, string> = {
-  CRITICAL: 'bg-red-500/25 text-red-300 border-red-500/50 shadow-sm animate-pulse',
-  HIGH: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
-  MEDIUM: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  LOW: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-};
 
 export const PlayerBadge = React.memo<PlayerBadgeProps>(({
   playerId,
@@ -45,7 +39,7 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
 }) => {
   if (!stats) {
     return (
-      <div className="w-full mt-2 p-2 rounded-xl bg-faceit-dark/80 border border-white/5 text-center text-[10px] text-zinc-500 font-mono">
+      <div className="w-full mt-2 p-2 rounded-xl bg-faceit-dark/80 border border-white/5 text-center text-[10px] text-zinc-400 font-mono">
         <span>Stats unavailable — Alt+R to retry</span>
       </div>
     );
@@ -58,20 +52,30 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
   const displayWinRate = stats.last30WinRate ?? (stats.overallWinRate > 0 ? stats.overallWinRate : undefined);
   const statsWindow = stats.last30Matches !== undefined ? `last ${stats.last30Matches} matches` : 'lifetime stats';
 
-  const riskBadgeStyle = risk ? (RISK_BADGE_STYLES[risk.level] || RISK_BADGE_STYLES.LOW) : null;
+  const riskBadgeStyle = risk ? RISK_LEVEL_BADGE_STYLES[risk.level] || RISK_LEVEL_BADGE_STYLES.LOW : null;
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open detailed analytics for ${stats.nickname}`}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
         onOpenDetails(playerId);
       }}
-      className={`w-full mt-2 rounded-xl border text-white font-sans transition-all duration-150 cursor-pointer shadow-md group active:scale-[0.99] select-none ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenDetails(playerId);
+        }
+      }}
+      className={`w-full mt-2 rounded-xl border text-white font-sans transition-all duration-200 ease-out cursor-pointer shadow-md group hover:scale-[1.005] active:scale-[0.99] select-none focus-visible:ring-2 focus-visible:ring-faceit-orange/70 ${
         compact ? 'p-1.5' : 'p-2'
       } ${
         isCurrentUser
-          ? 'bg-cyan-950/25 hover:bg-cyan-950/40 border-cyan-500/40 hover:border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+          ? 'bg-cyan-950/25 hover:bg-cyan-950/40 border-cyan-500/40 hover:border-cyan-400 shadow-glow-cyan'
           : 'bg-faceit-card/95 hover:bg-faceit-card-hover border-white/10 hover:border-faceit-orange/60 hover:shadow-glow-orange'
       }`}
       title={isCurrentUser ? 'Your Profile (Click to view full details)' : 'Click to view deep player performance, match history, and risk analysis'}
@@ -80,7 +84,7 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
       <div className="grid grid-cols-4 gap-1 text-center font-mono">
         {/* K/D */}
         <div className="stat-cell p-1 min-w-0" title={`Average K/D over the ${statsWindow}`}>
-          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">K/D 30M</div>
+          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">K/D 30M</div>
           <div
             className={`text-xs font-black mt-0.5 truncate ${
               displayKd >= 1.25
@@ -96,7 +100,7 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
 
         {/* ADR */}
         <div className="stat-cell p-1 min-w-0" title={`Average ADR over the ${statsWindow}`}>
-          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">ADR 30M</div>
+          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">ADR 30M</div>
           {displayAdr !== undefined ? (
             <div
               className={`text-xs font-black mt-0.5 truncate ${
@@ -110,29 +114,29 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
               {Math.round(displayAdr)}
             </div>
           ) : (
-            <div className="text-xs font-black text-zinc-500 mt-0.5">—</div>
+            <div className="text-xs font-black text-zinc-400 mt-0.5">—</div>
           )}
         </div>
 
         {/* HS% */}
         <div className="stat-cell p-1 min-w-0" title={`Average headshot % over the ${statsWindow}`}>
-          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">HS% 30M</div>
+          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">HS% 30M</div>
           <div className="text-xs font-black text-zinc-100 mt-0.5 truncate">
-            {displayHs !== undefined ? `${Math.round(displayHs)}%` : <span className="text-zinc-500">—</span>}
+            {displayHs !== undefined ? `${Math.round(displayHs)}%` : <span className="text-zinc-400">—</span>}
           </div>
         </div>
 
         {/* Win Rate & Matches */}
         <div className="stat-cell p-1 min-w-0" title={`Win rate over the ${statsWindow}`}>
-          <div className="text-[9px] text-zinc-400 font-sans uppercase font-bold">WR 30M</div>
+          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">WR 30M</div>
           <div className="text-xs font-black text-zinc-100 mt-0.5 truncate">
-            {displayWinRate !== undefined ? `${displayWinRate.toFixed(0)}%` : <span className="text-zinc-500">—</span>}
+            {displayWinRate !== undefined ? `${displayWinRate.toFixed(0)}%` : <span className="text-zinc-400">—</span>}
           </div>
         </div>
       </div>
 
       {/* Bottom Row: Context Tags & Badges */}
-      <div className={`${compact ? 'mt-1' : 'mt-1.5'} flex items-center justify-between flex-wrap gap-1 text-[9px] font-mono font-bold`}>
+      <div className={`${compact ? 'mt-1' : 'mt-1.5'} flex items-center justify-between flex-wrap gap-1 text-[10px] font-mono font-bold`}>
         <div className="flex items-center flex-wrap gap-1">
           {/* Premade Group */}
           {premadeGroup && (
@@ -244,7 +248,7 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
           className="flex items-center gap-1 text-faceit-orange hover:text-orange-400 font-bold hover:underline transition px-1.5 py-0.5 rounded bg-faceit-orange/10 border border-faceit-orange/30 hover:bg-faceit-orange/20"
           title="Open player CS2 stats on FACEIT"
         >
-          <span className="text-[9px] font-sans">Details</span>
+          <span className="text-[10px] font-sans">Details</span>
           <ExternalLink className="w-2.5 h-2.5" />
         </a>
       </div>

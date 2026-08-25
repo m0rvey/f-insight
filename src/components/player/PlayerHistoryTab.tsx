@@ -53,15 +53,15 @@ export const PlayerHistoryTab = React.memo<PlayerHistoryTabProps>(({ stats }) =>
 
         <div className="grid grid-cols-4 gap-2 text-center font-mono">
           <div className="stat-cell p-2">
-            <div className="text-[9px] text-zinc-400 font-sans uppercase">Win / Loss</div>
+            <div className="text-[10px] text-zinc-400 font-sans uppercase tracking-wide">Win / Loss</div>
             <div className="text-xs font-bold text-zinc-100 mt-0.5">
               <span className="text-emerald-400">{wins}W</span> - <span className="text-red-400">{losses}L</span>
-              <span className="text-[10px] text-zinc-500 ml-1">({winRate}%)</span>
+              <span className="text-[10px] text-zinc-400 ml-1">({winRate}%)</span>
             </div>
           </div>
 
           <div className="stat-cell p-2">
-            <div className="text-[9px] text-zinc-400 font-sans uppercase">Recent K/D</div>
+            <div className="text-[10px] text-zinc-400 font-sans uppercase tracking-wide">Recent K/D</div>
             <div
               className={`text-xs font-bold mt-0.5 ${
                 avgKd >= 1.25 ? 'text-emerald-400' : avgKd < 0.95 ? 'text-red-400' : 'text-zinc-100'
@@ -72,12 +72,12 @@ export const PlayerHistoryTab = React.memo<PlayerHistoryTabProps>(({ stats }) =>
           </div>
 
           <div className="stat-cell p-2">
-            <div className="text-[9px] text-zinc-400 font-sans uppercase">Recent ADR</div>
+            <div className="text-[10px] text-zinc-400 font-sans uppercase tracking-wide">Recent ADR</div>
             <div className="text-xs font-bold text-zinc-100 mt-0.5">{avgAdr ?? '—'}</div>
           </div>
 
           <div className="stat-cell p-2">
-            <div className="text-[9px] text-zinc-400 font-sans uppercase">Recent HS%</div>
+            <div className="text-[10px] text-zinc-400 font-sans uppercase tracking-wide">Recent HS%</div>
             <div className="text-xs font-bold text-zinc-100 mt-0.5">{avgHs !== undefined ? `${avgHs}%` : '—'}</div>
           </div>
         </div>

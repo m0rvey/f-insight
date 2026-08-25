@@ -47,7 +47,7 @@ export const LevelProgressBar = React.memo<LevelProgressBarProps>(({ elo }) => {
       </div>
 
       {/* Footer Boundaries */}
-      <div className="flex items-center justify-between mt-1.5 text-[10px] font-mono text-zinc-500">
+      <div className="flex items-center justify-between mt-1.5 text-[10px] font-mono text-zinc-400">
         <span>{progress.minElo} Elo</span>
         {progress.pointsToDemotion !== null && progress.pointsToDemotion > 0 && progress.pointsToDemotion <= 50 && (
           <span className="text-red-400/90 font-semibold flex items-center gap-0.5">

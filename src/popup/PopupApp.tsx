@@ -177,10 +177,12 @@ export const PopupApp: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-4 border-b border-faceit-border/80 bg-zinc-900/80 text-[11px] text-center">
+      <div role="tablist" aria-label="Settings sections" className="grid grid-cols-4 border-b border-faceit-border/80 bg-zinc-900/80 text-[11px] text-center">
         <button
           onClick={() => setActiveTab('status')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
+          role="tab"
+          aria-selected={activeTab === 'status'}
+          className={`py-2.5 px-1 font-semibold border-b-2 transition-all duration-200 ease-out flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'status'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -191,7 +193,9 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('automation')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
+          role="tab"
+          aria-selected={activeTab === 'automation'}
+          className={`py-2.5 px-1 font-semibold border-b-2 transition-all duration-200 ease-out flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'automation'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -202,7 +206,9 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('modules')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
+          role="tab"
+          aria-selected={activeTab === 'modules'}
+          className={`py-2.5 px-1 font-semibold border-b-2 transition-all duration-200 ease-out flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'modules'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -213,7 +219,9 @@ export const PopupApp: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('cache')}
-          className={`py-2.5 px-1 font-semibold border-b-2 transition flex items-center justify-center gap-1 whitespace-nowrap ${
+          role="tab"
+          aria-selected={activeTab === 'cache'}
+          className={`py-2.5 px-1 font-semibold border-b-2 transition-all duration-200 ease-out flex items-center justify-center gap-1 whitespace-nowrap ${
             activeTab === 'cache'
               ? 'border-faceit-orange text-faceit-orange bg-white/[0.02]'
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -277,7 +285,7 @@ export const PopupApp: React.FC = () => {
                 <Shield className="w-4 h-4 text-faceit-orange flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Smurf Scorer</div>
-                  <div className={`text-[10px] font-mono ${settings.enableRedFlags ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                  <div className={`text-[10px] font-mono ${settings.enableRedFlags ? 'text-emerald-400' : 'text-faceit-muted'}`}>
                     {settings.enableRedFlags ? '● Enabled' : '○ Disabled'}
                   </div>
                 </div>
@@ -287,7 +295,7 @@ export const PopupApp: React.FC = () => {
                 <Layers className="w-4 h-4 text-purple-400 flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Veto Helper</div>
-                  <div className={`text-[10px] font-mono ${settings.enableVetoHelper ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                  <div className={`text-[10px] font-mono ${settings.enableVetoHelper ? 'text-emerald-400' : 'text-faceit-muted'}`}>
                     {settings.enableVetoHelper ? '● Enabled' : '○ Disabled'}
                   </div>
                 </div>
@@ -297,7 +305,7 @@ export const PopupApp: React.FC = () => {
                 <Play className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Auto Ready-Up</div>
-                  <div className={`text-[10px] font-mono ${settings.autoReadyUp ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                  <div className={`text-[10px] font-mono ${settings.autoReadyUp ? 'text-emerald-400' : 'text-faceit-muted'}`}>
                     {settings.autoReadyUp ? '● Enabled' : '○ Disabled'}
                   </div>
                 </div>
@@ -307,7 +315,7 @@ export const PopupApp: React.FC = () => {
                 <Users className="w-4 h-4 text-blue-400 flex-shrink-0" />
                 <div>
                   <div className="font-semibold text-zinc-200 text-[11px]">Party Detector</div>
-                  <div className={`text-[10px] font-mono ${settings.enablePremadeDetection ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                  <div className={`text-[10px] font-mono ${settings.enablePremadeDetection ? 'text-emerald-400' : 'text-faceit-muted'}`}>
                     {settings.enablePremadeDetection ? '● Enabled' : '○ Disabled'}
                   </div>
                 </div>
@@ -505,7 +513,7 @@ export const PopupApp: React.FC = () => {
       </div>
 
       {/* Footer */}
-      <div className="p-3 bg-zinc-950 border-t border-faceit-border/60 text-center text-[10px] text-zinc-500">
+      <div className="p-3 bg-zinc-950 border-t border-faceit-border/60 text-center text-[10px] text-zinc-400">
         f-insight • Open-Source MIT • 100% Free & Fast
       </div>
     </div>

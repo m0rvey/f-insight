@@ -35,19 +35,19 @@ export const PlayerOverviewTab = React.memo<PlayerOverviewTabProps>(({ stats, st
         <div className="surface-card p-3 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">ADR 30M</div>
           <div className="text-xl font-bold font-mono text-zinc-100 mt-1">
-            {adr30 !== undefined ? Math.round(adr30) : <span className="text-zinc-500">—</span>}
+            {adr30 !== undefined ? Math.round(adr30) : <span className="text-zinc-400">—</span>}
           </div>
         </div>
         <div className="surface-card p-3 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">Win Rate 30M</div>
           <div className="text-xl font-bold font-mono text-zinc-100 mt-1">
-            {wr30 !== undefined ? `${wr30.toFixed(0)}%` : <span className="text-zinc-500">—</span>}
+            {wr30 !== undefined ? `${wr30.toFixed(0)}%` : <span className="text-zinc-400">—</span>}
           </div>
         </div>
         <div className="surface-card p-3 text-center">
           <div className="text-[10px] text-faceit-muted uppercase">FCR Impact</div>
           <div className="text-xl font-bold font-mono text-purple-400 mt-1">
-            {stats.fcrContributionPercent !== undefined ? `${stats.fcrContributionPercent}%` : <span className="text-zinc-500">—</span>}
+            {stats.fcrContributionPercent !== undefined ? `${stats.fcrContributionPercent}%` : <span className="text-zinc-400">—</span>}
           </div>
         </div>
         <div className="surface-card p-3 text-center">
@@ -60,7 +60,7 @@ export const PlayerOverviewTab = React.memo<PlayerOverviewTabProps>(({ stats, st
               {risk.score}%
             </div>
           ) : (
-            <div className="text-xl font-bold font-mono text-zinc-500 mt-1">—</div>
+            <div className="text-xl font-bold font-mono text-zinc-400 mt-1">—</div>
           )}
         </div>
       </div>
@@ -170,7 +170,7 @@ export const PlayerOverviewTab = React.memo<PlayerOverviewTabProps>(({ stats, st
                     {steamBans.vacBanned || (steamBans.numberOfGameBans ?? 0) > 0 ? 'Banned' : 'Clean'}
                   </div>
                 ) : (
-                  <div className="text-sm font-bold font-mono text-zinc-500 mt-0.5">No data</div>
+                  <div className="text-sm font-bold font-mono text-zinc-400 mt-0.5">No data</div>
                 )}
               </div>
             </div>

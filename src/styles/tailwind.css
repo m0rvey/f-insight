@@ -2,10 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /* Keyboard accessibility: visible focus ring for every interactive element
+     inside the Shadow DOM (f-insight renders no native browser outlines). */
+  :where(button, a, [tabindex], input, select, textarea):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.7);
+    border-radius: inherit;
+  }
+}
+
 @layer components {
-  /* Shared stat cell (KPI tiles) */
+  /* Shared stat cell (KPI tiles) — non-interactive: no hover affordance */
   .stat-cell {
-    @apply bg-black/40 rounded-lg border border-white/5 hover:border-white/10 transition;
+    @apply bg-black/40 rounded-lg border border-white/5;
   }
 
   /* Shared card surface */
@@ -13,9 +23,31 @@
     @apply bg-faceit-card rounded-xl border border-faceit-border/80;
   }
 
+  /* Composite panel surface: real glass blur + signature dark gradient.
+     Single recipe used by LobbySummaryBar, VetoMatrix and QuickControls pill
+     instead of hand-assembling glass-panel + gradient overrides each time. */
+  .panel-surface {
+    @apply rounded-2xl border border-white/10 shadow-card bg-gradient-to-b from-[#18181C]/90 to-[#121214]/95;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  /* Standard secondary icon button */
+  .btn-icon {
+    @apply p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-zinc-300 hover:text-white transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+  }
+
   /* Shared status chip */
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border;
+  }
+
+  /* Shimmering skeleton placeholder — replaces spinners for content loading */
+  .skeleton {
+    @apply rounded-xl bg-white/5;
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
   }
 }
 
@@ -40,6 +72,12 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
   }
 }
 

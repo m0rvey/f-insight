@@ -22,20 +22,21 @@ export const SettingToggle = React.memo<SettingToggleProps>(({
 }) => {
   if (variant === 'simple') {
     return (
-      <div className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between">
+      <label className="p-2.5 rounded-lg bg-faceit-card border border-faceit-border flex items-center justify-between cursor-pointer">
         <span className="text-xs font-semibold text-zinc-200">{title}</span>
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="w-4 h-4 accent-faceit-orange cursor-pointer"
+          aria-label={title}
+          className="w-4 h-4 accent-faceit-orange cursor-pointer rounded"
         />
-      </div>
+      </label>
     );
   }
 
   return (
-    <div className="p-3 rounded-xl bg-faceit-card border border-faceit-border flex items-center justify-between">
+    <label className="p-3 rounded-xl bg-faceit-card border border-faceit-border flex items-center justify-between cursor-pointer">
       <div className="flex items-center gap-2.5">
         {Icon && <Icon className={`w-4 h-4 ${iconColorClass || 'text-zinc-400'}`} />}
         <div>
@@ -47,9 +48,10 @@ export const SettingToggle = React.memo<SettingToggleProps>(({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 accent-faceit-orange cursor-pointer"
+        aria-label={title}
+        className="w-4 h-4 accent-faceit-orange cursor-pointer rounded"
       />
-    </div>
+    </label>
   );
 });
 SettingToggle.displayName = "SettingToggle";

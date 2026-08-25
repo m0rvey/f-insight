@@ -16,6 +16,7 @@ import {
   History,
   TrendingUp,
 } from 'lucide-react';
+import { riskBadgeStyleForScore } from '../constants/riskStyles';
 
 interface PlayerDetailFlyoutProps {
   stats: FaceitPlayerFullStats;
@@ -66,7 +67,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
         aria-modal="true"
         aria-label="Player details"
         tabIndex={-1}
-        className="glass-panel w-full max-w-2xl max-h-[85vh] rounded-2xl border border-faceit-border/90 shadow-2xl flex flex-col overflow-hidden bg-faceit-dark outline-none"
+        className="glass-panel w-full max-w-2xl max-h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden bg-[#16181D]/85 backdrop-blur-xl outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -111,15 +112,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                 )}
                 {risk && (
                   <span
-                    className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-mono font-bold border ${
-                      risk.score >= 70
-                        ? 'bg-red-500/25 text-red-300 border-red-500/50 shadow-sm animate-pulse'
-                        : risk.score >= 45
-                        ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
-                        : risk.score >= 25
-                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                        : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                    }`}
+                    className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-mono font-bold border ${riskBadgeStyleForScore(risk.score)}`}
                   >
                     <ShieldAlert className="w-3 h-3" />
                     Smurf Risk: {risk.score}%
@@ -127,8 +120,8 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-400 flex-wrap">
-                <span className="font-mono text-zinc-200">
+              <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-400 flex-wrap font-mono">
+                <span className="text-zinc-200">
                   <strong className="text-faceit-orange">{stats.elo}</strong> Elo
                 </span>
                 <span>•</span>
@@ -168,10 +161,25 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-faceit-border/80 bg-zinc-900/60 px-5 overflow-x-auto whitespace-nowrap">
+        <div
+          role="tablist"
+          aria-label="Player analytics sections"
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+            e.preventDefault();
+            const order: TabType[] = ['overview', 'maps', 'history', 'risk'];
+            const next = e.key === 'ArrowRight'
+              ? order[(order.indexOf(activeTab) + 1) % order.length]
+              : order[(order.indexOf(activeTab) + order.length - 1) % order.length];
+            setActiveTab(next);
+          }}
+          className="flex border-b border-faceit-border/80 bg-zinc-900/60 px-5 overflow-x-auto whitespace-nowrap"
+        >
           <button
             onClick={() => setActiveTab('overview')}
-            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition flex items-center gap-1.5 ${
+            role="tab"
+            aria-selected={activeTab === 'overview'}
+            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition-all duration-200 ease-out flex items-center gap-1.5 ${
               activeTab === 'overview'
                 ? 'border-faceit-orange text-faceit-orange font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -182,7 +190,9 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('maps')}
-            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition flex items-center gap-1.5 ${
+            role="tab"
+            aria-selected={activeTab === 'maps'}
+            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition-all duration-200 ease-out flex items-center gap-1.5 ${
               activeTab === 'maps'
                 ? 'border-faceit-orange text-faceit-orange font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -193,7 +203,9 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition flex items-center gap-1.5 ${
+            role="tab"
+            aria-selected={activeTab === 'history'}
+            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition-all duration-200 ease-out flex items-center gap-1.5 ${
               activeTab === 'history'
                 ? 'border-faceit-orange text-faceit-orange font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -204,7 +216,9 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('risk')}
-            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition flex items-center gap-1.5 ${
+            role="tab"
+            aria-selected={activeTab === 'risk'}
+            className={`py-2.5 px-4 text-xs font-medium border-b-2 transition-all duration-200 ease-out flex items-center gap-1.5 ${
               activeTab === 'risk'
                 ? 'border-faceit-orange text-faceit-orange font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -221,7 +235,7 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
         </div>
 
         {/* Tab Body */}
-        <div className="p-5 overflow-y-auto flex-1 space-y-4">
+        <div className="p-5 overflow-y-auto flex-1 space-y-4" role="tabpanel">
           {activeTab === 'overview' && <PlayerOverviewTab stats={stats} steam={steam} risk={risk} />}
           {activeTab === 'maps' && <PlayerMapsTab stats={stats} />}
           {activeTab === 'history' && <PlayerHistoryTab stats={stats} />}

@@ -123,10 +123,22 @@ export const VetoMatrix = React.memo<VetoMatrixProps>(({
 
   if (Object.keys(playersStats).length < 2) {
     return (
-      <div className="w-full mb-4 font-sans text-white animate-pulse">
-        <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-card bg-[#18181C]/90 h-64 flex items-center justify-center flex-col gap-3 text-zinc-500 font-mono text-xs shadow-inner">
-          <Layers className="w-6 h-6 animate-pulse text-purple-400" />
-          <span>Building Map Veto Intelligence...</span>
+      <div className="w-full mb-4 font-sans text-white">
+        <div className="panel-surface p-4 sm:p-5 space-y-4" aria-hidden="true">
+          <div className="flex items-center gap-2.5">
+            <Layers className="w-4 h-4 animate-pulse text-purple-400" />
+            <span className="text-xs font-mono text-zinc-400">Building Map Veto Intelligence...</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="h-20 skeleton" />
+            <div className="h-20 skeleton" />
+            <div className="h-20 skeleton" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="h-28 skeleton" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -134,7 +146,7 @@ export const VetoMatrix = React.memo<VetoMatrixProps>(({
 
   return (
     <div className="w-full mb-4 font-sans text-white animate-fade-in selection:bg-faceit-orange selection:text-black">
-      <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-card bg-gradient-to-b from-[#18181C]/95 to-[#121214]/95 space-y-4">
+      <div className="panel-surface p-4 sm:p-5 space-y-4">
         {/* Header Bar */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10 flex-wrap gap-2.5">
           <div className="flex items-center gap-2.5">
@@ -314,14 +326,14 @@ export const VetoMatrix = React.memo<VetoMatrixProps>(({
                       {f1.name} {userFaction === 'faction1' ? '(YOU)' : ''}
                     </div>
                     <div className="font-bold text-zinc-100 text-xs">{m.f1WinRate}%</div>
-                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f1AvgKd} KD • {m.f1Matches}m</div>
+                    <div className="text-[10px] text-zinc-400 mt-0.5">{m.f1AvgKd} KD • {m.f1Matches}m</div>
                   </div>
                   <div className={`rounded-lg p-2 border ${userFaction === 'faction2' ? 'bg-cyan-950/20 border-cyan-500/30' : 'bg-black/40 border-white/5'}`}>
                     <div className="text-[9px] text-orange-400 font-bold mb-0.5 truncate">
                       {f2.name} {userFaction === 'faction2' ? '(YOU)' : ''}
                     </div>
                     <div className="font-bold text-zinc-100 text-xs">{m.f2WinRate}%</div>
-                    <div className="text-[9px] text-zinc-500 mt-0.5">{m.f2AvgKd} KD • {m.f2Matches}m</div>
+                    <div className="text-[10px] text-zinc-400 mt-0.5">{m.f2AvgKd} KD • {m.f2Matches}m</div>
                   </div>
                 </div>
 

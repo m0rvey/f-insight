@@ -155,7 +155,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
 
   return (
     <div className="w-full mb-4 font-sans antialiased text-white selection:bg-faceit-orange selection:text-black">
-      <div className={`glass-panel rounded-2xl shadow-card border border-white/10 relative overflow-hidden bg-gradient-to-b from-[#18181C]/90 to-[#121214]/95 ${compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}`}>
+      <div className={`panel-surface relative overflow-hidden ${compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}`}>
         {/* Glowing top line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 via-faceit-orange to-amber-400 opacity-90" />
 
@@ -218,7 +218,8 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
               <button
                 onClick={onToggleVetoMatrix}
                 title="Toggle Veto & Map Pool Matrix"
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold border transition shadow-sm ${
+                aria-pressed={showVetoMatrix}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold border transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] shadow-sm ${
                   showVetoMatrix
                     ? 'bg-purple-500/30 text-purple-200 border-purple-500/50 shadow-glow-orange'
                     : 'bg-zinc-800/80 hover:bg-zinc-700 border-white/10 text-zinc-300 hover:text-white'
@@ -232,16 +233,18 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
             <button
               onClick={onRefresh}
               disabled={isLoading}
+              aria-label="Force refresh lobby stats"
               title="Force Refresh Lobby Stats"
-              className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-zinc-300 hover:text-white transition"
+              className="btn-icon"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-faceit-orange' : ''}`} />
             </button>
 
             <button
               onClick={onToggleVisibility}
+              aria-label={isVisible ? 'Collapse overlay' : 'Expand overlay'}
               title={isVisible ? 'Collapse Overlay' : 'Expand Overlay'}
-              className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-zinc-300 hover:text-white transition"
+              className="btn-icon"
             >
               {isVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
@@ -254,16 +257,22 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
           <div className={`${compact ? 'mt-3 space-y-2.5' : 'mt-4 space-y-3.5'}`}>
             {!teamSummary ? (
               isLoading ? (
-                <div className="w-full h-32 flex items-center justify-center border border-white/5 bg-black/20 rounded-xl animate-pulse text-zinc-500 font-mono text-xs shadow-inner">
-                  <span className="flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-faceit-orange" />
-                    Calculating Match Prediction & Risk Factors...
-                  </span>
+                /* Shimmering skeleton layout mirroring the real content structure */
+                <div className="space-y-3.5" aria-hidden="true">
+                  <div className="h-9 w-2/3 skeleton" />
+                  <div className="h-11 w-full skeleton" />
+                  <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-center">
+                    <div className="md:col-span-5 h-36 skeleton" />
+                    <div className="hidden md:flex md:col-span-1 h-10 items-center justify-center">
+                      <div className="w-10 h-6 skeleton !rounded-md" />
+                    </div>
+                    <div className="md:col-span-5 h-36 skeleton" />
+                  </div>
                 </div>
               ) : (
-                <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 border border-white/5 bg-black/20 rounded-xl text-zinc-500 font-mono text-xs shadow-inner">
+                <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 border border-white/5 bg-black/20 rounded-xl text-zinc-400 font-mono text-xs shadow-inner">
                   <span>FACEIT API unreachable — insights unavailable</span>
-                  <span className="text-[10px] text-zinc-600">Press Alt+R to retry</span>
+                  <span className="text-[10px] text-zinc-500">Press Alt+R to retry</span>
                 </div>
               )
             ) : (
@@ -287,7 +296,7 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     {payload.prediction.starMatchup && (
                       <div className="text-[10px] font-mono text-zinc-400">
                         <span className="text-blue-300 font-bold">{payload.prediction.starMatchup.f1Star.nickname}</span>
-                        <span className="mx-1 text-zinc-600">vs</span>
+                        <span className="mx-1 text-zinc-500">vs</span>
                         <span className="text-orange-300 font-bold">{payload.prediction.starMatchup.f2Star.nickname}</span>
                       </div>
                     )}
@@ -330,12 +339,12 @@ export const LobbySummaryBar: React.FC<LobbySummaryBarProps> = ({
                     <div className="flex items-center gap-3 font-mono text-[11px] self-end sm:self-auto">
                       <div className="text-right">
                         <div className="text-blue-400 font-bold">{selectedMapRankItem.f1WinRate}% WR</div>
-                        <div className="text-[10px] text-zinc-500">{selectedMapRankItem.f1AvgKd} KD • {selectedMapRankItem.f1Matches}m</div>
+                        <div className="text-[10px] text-zinc-400">{selectedMapRankItem.f1AvgKd} KD • {selectedMapRankItem.f1Matches}m</div>
                       </div>
-                      <span className="text-zinc-600 font-sans">vs</span>
+                      <span className="text-zinc-500 font-sans">vs</span>
                       <div className="text-left">
                         <div className="text-orange-400 font-bold">{selectedMapRankItem.f2WinRate}% WR</div>
-                        <div className="text-[10px] text-zinc-500">{selectedMapRankItem.f2AvgKd} KD • {selectedMapRankItem.f2Matches}m</div>
+                        <div className="text-[10px] text-zinc-400">{selectedMapRankItem.f2AvgKd} KD • {selectedMapRankItem.f2Matches}m</div>
                       </div>
                     </div>
                   </div>

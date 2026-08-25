@@ -58,15 +58,21 @@ export const ServerConnectBar = React.memo<ServerConnectBarProps>(({ serverIp, s
       <div className="flex items-center gap-2">
         <button
           onClick={handleCopyIp}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-faceit-orange hover:bg-faceit-orange-hover text-black font-extrabold text-xs transition shadow-glow-orange active:scale-95"
+          aria-live="polite"
+          aria-label={copiedIp ? 'Copied to clipboard' : copyFailed ? 'Copy failed, try again' : 'Copy connect command'}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] ${
+            copyFailed
+              ? 'bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200'
+              : 'bg-faceit-orange hover:bg-faceit-orange-hover text-black shadow-glow-orange'
+          }`}
         >
-          {copiedIp ? <Check className="w-3.5 h-3.5" /> : copyFailed ? <Copy className="w-3.5 h-3.5 text-red-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copiedIp ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           <span>{copiedIp ? 'Copied to Clipboard!' : copyFailed ? 'Copy Failed' : 'Copy Connect'}</span>
         </button>
 
         <a
           href={`steam://connect/${serverIp}`}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 text-xs font-bold transition active:scale-95"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 text-xs font-bold transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
         >
           <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
           <span>Launch CS2</span>

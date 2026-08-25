@@ -81,23 +81,23 @@ export const TeamCard = React.memo<TeamCardProps>(({
 
       <div className="grid grid-cols-5 gap-2 text-center font-mono">
         <div className="stat-cell p-2">
-          <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg Elo</div>
+          <div className="text-[10px] text-zinc-400 uppercase font-sans font-bold tracking-wide">Avg Elo</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgElo}</div>
         </div>
         <div className="stat-cell p-2">
-          <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg K/D</div>
+          <div className="text-[10px] text-zinc-400 uppercase font-sans font-bold tracking-wide">Avg K/D</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgKd}</div>
         </div>
         <div className="stat-cell p-2">
-          <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg ADR</div>
+          <div className="text-[10px] text-zinc-400 uppercase font-sans font-bold tracking-wide">Avg ADR</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgAdr}</div>
         </div>
         <div className="stat-cell p-2">
-          <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Avg HS%</div>
+          <div className="text-[10px] text-zinc-400 uppercase font-sans font-bold tracking-wide">Avg HS%</div>
           <div className="text-sm font-bold text-zinc-100 mt-0.5">{avgHsPercent}%</div>
         </div>
         <div className="stat-cell p-2">
-          <div className="text-[9px] text-zinc-400 uppercase font-sans font-bold">Top Map</div>
+          <div className="text-[10px] text-zinc-400 uppercase font-sans font-bold tracking-wide">Top Map</div>
           <div className={`text-sm font-bold mt-0.5 capitalize truncate ${isF1 ? 'text-blue-400' : 'text-orange-400'}`}>
             {topMap ? topMap.name : '—'}
           </div>

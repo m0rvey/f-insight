@@ -19,7 +19,7 @@ export const QuickControls = React.memo<QuickControlsProps>(({
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="fixed bottom-6 right-6 z-[99999] font-sans antialiased text-white flex flex-col items-end selection:bg-faceit-orange selection:text-black">
+    <div className="relative font-sans antialiased text-white flex flex-col items-end selection:bg-faceit-orange selection:text-black">
       {/* Expanded quick action pill */}
       {isExpanded && (
         <div className="mb-2.5 p-2 rounded-2xl glass-panel border border-white/10 shadow-2xl flex items-center gap-2 animate-fade-in bg-gradient-to-b from-[#18181C]/95 to-[#121214]/95">
@@ -34,7 +34,7 @@ export const QuickControls = React.memo<QuickControlsProps>(({
             onClick={onRefresh}
             disabled={isLoading}
             aria-label="Refresh match data"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-bold text-zinc-200 hover:text-white transition active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-bold text-zinc-200 hover:text-white transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-faceit-orange' : 'text-zinc-400'}`} />
             <span>Refresh</span>
@@ -43,7 +43,7 @@ export const QuickControls = React.memo<QuickControlsProps>(({
           <button
             onClick={onToggleVisibility}
             aria-label={isVisible ? 'Hide HUD' : 'Show HUD'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-bold text-zinc-200 hover:text-white transition active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-bold text-zinc-200 hover:text-white transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
           >
             {isVisible ? <EyeOff className="w-3.5 h-3.5 text-zinc-400" /> : <Eye className="w-3.5 h-3.5 text-faceit-orange" />}
             <span>{isVisible ? 'Hide HUD' : 'Show HUD'}</span>
@@ -56,10 +56,10 @@ export const QuickControls = React.memo<QuickControlsProps>(({
         onClick={() => setIsExpanded(!isExpanded)}
         aria-label={isExpanded ? 'Collapse f-insight controls' : 'Expand f-insight controls'}
         aria-expanded={isExpanded}
-        className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#16161A]/95 hover:bg-[#1C1C22] border border-faceit-orange/50 hover:border-faceit-orange text-white shadow-glow-orange transition-all duration-200 group active:scale-95"
+        className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#16161A]/95 hover:bg-[#1C1C22] border border-faceit-orange/50 hover:border-faceit-orange text-white shadow-glow-orange transition-all duration-200 ease-out group hover:scale-[1.02] active:scale-[0.98]"
         title="f-insight Match HUD Controls"
       >
-        <div className="w-2.5 h-2.5 rounded-full bg-faceit-orange animate-pulse shadow-glow-orange" />
+        <div className="w-2.5 h-2.5 rounded-full bg-faceit-orange shadow-glow-orange animate-[pulse_3s_ease-in-out_infinite]" />
         <span className="font-extrabold text-xs tracking-wider flex items-center gap-1">
           <Zap className="w-3 h-3 text-faceit-orange fill-faceit-orange" />
           f-insight
