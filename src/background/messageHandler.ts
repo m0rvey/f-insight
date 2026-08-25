@@ -4,7 +4,7 @@ import {
   MessageResponse,
 } from '../types/messages';
 import { ExtensionSettings, DEFAULT_SETTINGS } from '../types/settings';
-import { cacheManager, TTL } from '../services/cacheManager';
+import { cacheManager, TTL, SETTINGS_KEY } from '../services/cacheManager';
 import { faceitApi } from '../services/faceitApi';
 import { steamApi } from '../services/steamApi';
 import { calculateRiskScore } from '../services/riskScorer';
@@ -64,7 +64,7 @@ export class BackgroundMessageHandler {
   }
 
   async loadSettings(): Promise<ExtensionSettings> {
-    const cached = await cacheManager.get<ExtensionSettings>('settings');
+    const cached = await cacheManager.get<ExtensionSettings>(SETTINGS_KEY);
     if (cached) {
       this.settings = { ...DEFAULT_SETTINGS, ...cached };
     }
@@ -102,8 +102,21 @@ export class BackgroundMessageHandler {
   }
 
   private async handleSaveSettings(payload: any): Promise<MessageResponse> {
-    this.settings = { ...this.settings, ...payload };
-    await cacheManager.set('settings', this.settings, TTL.SETTINGS);
+    // Whitelist merge: the message originates from the content script, so the
+    // payload must not inject arbitrary keys/types into stored settings.
+    const sanitized: Partial<ExtensionSettings> = {};
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof ExtensionSettings)[]) {
+      if (payload && typeof payload === 'object' && key in payload) {
+        const defaultValue = DEFAULT_SETTINGS[key];
+        const incoming = payload[key];
+        // Accept only values matching the default's primitive type
+        if (typeof incoming === typeof defaultValue) {
+          (sanitized as Record<string, unknown>)[key] = incoming;
+        }
+      }
+    }
+    this.settings = { ...this.settings, ...sanitized };
+    await cacheManager.set(SETTINGS_KEY, this.settings, TTL.SETTINGS);
     return { success: true, data: this.settings };
   }
 
@@ -134,7 +147,11 @@ export class BackgroundMessageHandler {
     // Start or attach to background streaming
     if (!this.inFlightStreams.has(matchId) || forceRefresh) {
       const streamPromise = this.streamLobbyData(matchId, match, forceRefresh).finally(() => {
-        this.inFlightStreams.delete(matchId);
+        // Only remove our own entry: a forceRefresh may have replaced this
+        // stream with a newer one while we were still running.
+        if (this.inFlightStreams.get(matchId) === streamPromise) {
+          this.inFlightStreams.delete(matchId);
+        }
         this.streamSubscribers.delete(matchId);
       });
       this.inFlightStreams.set(matchId, streamPromise);
@@ -193,7 +210,11 @@ export class BackgroundMessageHandler {
         if (!pStats) {
           pStats = await faceitApi.getPlayerStats(pId, player.nickname);
           if (pStats) {
-            await cacheManager.set(pCacheKey, pStats, TTL.PLAYER_STATS);
+            // Partial payloads (stats endpoints failed → fabricated defaults)
+            // get a short negative TTL so a wrong "fresh account" snapshot is
+            // re-fetched quickly instead of poisoning the lobby for an hour.
+            const ttl = pStats.statsAvailable === false ? TTL.NEGATIVE : TTL.PLAYER_STATS;
+            await cacheManager.set(pCacheKey, pStats, ttl);
           }
         }
 

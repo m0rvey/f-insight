@@ -12,6 +12,9 @@ export const TTL = {
   SETTINGS: Number.MAX_SAFE_INTEGER,
 } as const;
 
+/** Reserved key that survives cache eviction and clear() operations. */
+export const SETTINGS_KEY = 'settings';
+
 const MAX_MEMORY_ENTRIES = 500;
 
 class CacheManager {
@@ -28,7 +31,7 @@ class CacheManager {
     while (this.memoryCache.size > MAX_MEMORY_ENTRIES) {
       const next = iter.next();
       if (next.done) break;
-      if (next.value !== 'settings') {
+      if (next.value !== SETTINGS_KEY) {
         this.memoryCache.delete(next.value);
       }
     }
@@ -110,7 +113,7 @@ class CacheManager {
       try {
         // Clear all except settings
         const all = await chrome.storage.local.get(null);
-        const keysToRemove = Object.keys(all).filter((k) => k !== 'settings');
+        const keysToRemove = Object.keys(all).filter((k) => k !== SETTINGS_KEY);
         if (keysToRemove.length > 0) {
           await chrome.storage.local.remove(keysToRemove);
         }
@@ -134,7 +137,7 @@ class CacheManager {
         const keysToRemove: string[] = [];
         
         for (const [key, val] of Object.entries(all)) {
-          if (key === 'settings') continue;
+          if (key === SETTINGS_KEY) continue;
           const entry = val as CacheEntry<unknown>;
           if (entry && entry.cachedAt && entry.ttlMs) {
             if (now - entry.cachedAt >= entry.ttlMs) {

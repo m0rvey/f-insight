@@ -106,6 +106,12 @@ export interface FaceitPlayerFullStats {
   elo: number;
   skillLevel: number;
   totalMatches: number;
+  /**
+   * False when the FACEIT stats endpoints failed (rate-limit / network) and
+   * lifetime aggregates are fabricated defaults. Consumers (riskScorer, UI)
+   * must treat "0 matches / 1.0 K/D" as UNKNOWN, not as a fresh account.
+   */
+  statsAvailable?: boolean;
   overallWinRate: number;
   overallKd: number;
   overallHsPercent: number;

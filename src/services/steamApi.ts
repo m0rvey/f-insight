@@ -88,7 +88,10 @@ export class SteamApiService {
 
   async getPlayerFullData(steamId64: string): Promise<SteamFullData> {
     if (!steamId64 || !/^\d{5,25}$/.test(steamId64)) {
-      return { isPrivate: true, fetchedAt: Date.now() };
+      // Invalid / missing ID means "no data", NOT a private profile: marking it
+      // isPrivate:true would add smurf-risk flags for a malformed input and the
+      // result would be cached for 24h (fetchError bypasses caching upstream).
+      return { isPrivate: false, fetchError: true, fetchedAt: Date.now() };
     }
 
     if (this.inFlightSteam.has(steamId64)) {

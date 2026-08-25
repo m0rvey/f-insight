@@ -2,6 +2,7 @@ import {
   FaceitMatchDetails,
   FaceitPlayerFullStats,
   MapSpecificStats,
+  MatchStatus,
   PlayerRecentMatch,
 } from '../types/faceit';
 import { evaluatePlayerForm } from './forecastEngine';
@@ -12,6 +13,19 @@ const pick = (obj: Record<string, any>, ...keys: string[]): string | undefined =
     if (v !== undefined && v !== null && v !== '') return v;
   }
   return undefined;
+};
+
+/** FACEIT formats some numbers with thousands separators ("1,234"). */
+const toInt = (raw: string | undefined, fallback: number): number => {
+  if (raw === undefined) return fallback;
+  const n = parseInt(raw.replace(/[,\s]/g, ''), 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const toFloat = (raw: string | undefined, fallback?: number): number | undefined => {
+  if (raw === undefined) return fallback;
+  const n = parseFloat(raw.replace(/[,\s]/g, ''));
+  return Number.isFinite(n) ? n : fallback;
 };
 
 export function parsePlayerPayload(
@@ -34,12 +48,16 @@ export function parsePlayerPayload(
   const statsObj = Array.isArray(stats) ? null : stats;
   const csgoStatsObj = Array.isArray(csgoStats) ? null : csgoStats;
   const lifetime = statsObj?.lifetime || csgoStatsObj?.lifetime || {};
-  const totalMatches = parseInt(pick(lifetime, 'Total Matches', 'Matches', 'm1') || '0', 10);
-  const overallWinRate = parseFloat(pick(lifetime, 'Win Rate %', 'k6') || '0');
-  const overallKd = parseFloat(pick(lifetime, 'Average K/D Ratio', 'K/D Ratio', 'k5') || '1.0');
-  const overallHsPercent = parseFloat(pick(lifetime, 'Average Headshots %', 'Headshots %', 'k8') || '0');
+  // Distinguishes "stats endpoints failed / rate-limited" from a legitimately
+  // fresh account: without this, totalMatches=0 defaults would flag veterans
+  // as CRITICAL smurfs (see riskScorer statsAvailable guard).
+  const statsAvailable = Object.keys(lifetime).length > 0;
+  const totalMatches = toInt(pick(lifetime, 'Total Matches', 'Matches', 'm1'), 0);
+  const overallWinRate = toFloat(pick(lifetime, 'Win Rate %', 'k6'), 0) ?? 0;
+  const overallKd = toFloat(pick(lifetime, 'Average K/D Ratio', 'K/D Ratio', 'k5'), 1.0) ?? 1.0;
+  const overallHsPercent = toFloat(pick(lifetime, 'Average Headshots %', 'Headshots %', 'k8'), 0) ?? 0;
   const overallAdrRaw = pick(lifetime, 'ADR', 'adr', 'c3');
-  const overallAdr = overallAdrRaw ? parseFloat(overallAdrRaw) : undefined;
+  const overallAdr = overallAdrRaw ? toFloat(overallAdrRaw, undefined) : undefined;
 
   // Segments breakdown (Maps) - Support both direct array and { segments: [...] }
   const mapStats: Record<string, MapSpecificStats> = {};
@@ -52,14 +70,14 @@ export function parsePlayerPayload(
     const rawId = seg._id?.segmentId || seg._id?.label || seg.label || seg.segmentId || seg.name || '';
     const mapLabel = rawId.replace(/^cs2_/, '').replace(/^csgo_/, '').replace(/^de_/, '').trim().toLowerCase();
     if (mapLabel) {
-      const mCount = parseInt(pick(seg.stats, 'Matches') ?? pick(seg, 'm1', 'matches') ?? '0', 10);
-      const mWinRate = parseFloat(pick(seg.stats, 'Win Rate %') ?? pick(seg, 'k6', 'winRate') ?? '0');
-      const mKd = parseFloat(pick(seg.stats, 'Average K/D Ratio', 'K/D Ratio') ?? pick(seg, 'k5', 'kd') ?? '1.0');
-      const mHs = parseFloat(pick(seg.stats, 'Average Headshots %') ?? pick(seg, 'k8', 'hsPercent') ?? '0');
-      const mAvgKills = parseFloat(pick(seg.stats, 'Average Kills') ?? pick(seg, 'k1', 'avgKills') ?? '0');
+      const mCount = toInt(pick(seg.stats, 'Matches') ?? pick(seg, 'm1', 'matches'), 0);
+      const mWinRate = toFloat(pick(seg.stats, 'Win Rate %') ?? pick(seg, 'k6', 'winRate'), 0) ?? 0;
+      const mKd = toFloat(pick(seg.stats, 'Average K/D Ratio', 'K/D Ratio') ?? pick(seg, 'k5', 'kd'), 1.0) ?? 1.0;
+      const mHs = toFloat(pick(seg.stats, 'Average Headshots %') ?? pick(seg, 'k8', 'hsPercent'), 0) ?? 0;
+      const mAvgKills = toFloat(pick(seg.stats, 'Average Kills') ?? pick(seg, 'k1', 'avgKills'), 0) ?? 0;
       const mAdrRaw = pick(seg.stats, 'ADR') ?? pick(seg, 'c3', 'adr');
-      const mAdr = mAdrRaw ? parseFloat(mAdrRaw) : undefined;
-      const mWins = parseInt(pick(seg.stats, 'Wins') ?? pick(seg, 'm2', 'wins') ?? Math.round((mCount * mWinRate) / 100).toString(), 10);
+      const mAdr = mAdrRaw ? toFloat(mAdrRaw, undefined) : undefined;
+      const mWins = toInt(pick(seg.stats, 'Wins') ?? pick(seg, 'm2', 'wins'), Math.round((mCount * mWinRate) / 100));
 
       if (!mapStats[mapLabel] || mCount > mapStats[mapLabel].matches) {
         mapStats[mapLabel] = {
@@ -105,12 +123,12 @@ export function parsePlayerPayload(
       }
 
       const mapName = (item.i1 || item.stats?.Map || item.map || '').replace(/^cs2_/, '').replace(/^de_/, '').toLowerCase();
-      const kills = parseInt(item.i6 || item.stats?.Kills || item.kills || '0', 10);
-      const deaths = parseInt(item.i8 || item.stats?.Deaths || item.deaths || '0', 10);
+      const kills = toInt(item.i6 ?? item.stats?.Kills ?? item.kills, 0);
+      const deaths = toInt(item.i8 ?? item.stats?.Deaths ?? item.deaths, 0);
       const adrRaw = item.c3 || item.stats?.ADR || item.adr;
-      const adr = adrRaw ? parseFloat(adrRaw) : undefined;
+      const adr = adrRaw ? toFloat(adrRaw, undefined) : undefined;
       const hsRaw = item.c4 || item.stats?.['Headshots %'];
-      const hsPercent = hsRaw ? parseFloat(hsRaw) : undefined;
+      const hsPercent = hsRaw ? toFloat(hsRaw, undefined) : undefined;
 
       if (mapName) {
         if (!historyMapStats[mapName]) {
@@ -215,13 +233,14 @@ export function parsePlayerPayload(
     avatar,
     country,
     steamId64,
-    elo,
-    skillLevel,
+    elo: Number.isFinite(elo) ? elo : 1000,
+    skillLevel: Number.isFinite(skillLevel) ? skillLevel : 1,
     totalMatches,
     overallWinRate,
     overallKd,
     overallHsPercent,
     overallAdr,
+    statsAvailable,
     last30Kd,
     last30Adr,
     last30AdrMatches,
@@ -347,6 +366,13 @@ export class FaceitApiService {
   }
 }
 
+const MATCH_STATUSES: MatchStatus[] = ['VOTING', 'CONFIGURING', 'READY', 'ON_GOING', 'CANCELLED', 'FINISHED'];
+
+function toMatchStatus(raw: unknown): MatchStatus {
+  const s = typeof raw === 'string' ? raw.toUpperCase() : '';
+  return (MATCH_STATUSES as string[]).includes(s) ? (s as MatchStatus) : 'VOTING';
+}
+
 export function parseMatchPayload(p: any): FaceitMatchDetails {
     const f1 = p.teams?.faction1 || p.faction1 || {};
     const f2 = p.teams?.faction2 || p.faction2 || {};
@@ -378,7 +404,7 @@ export function parseMatchPayload(p: any): FaceitMatchDetails {
       match_id: p.id || p.match_id,
       game: p.game || 'cs2',
       region: p.region || 'EU',
-      status: (p.status?.toUpperCase() || 'VOTING') as any,
+      status: toMatchStatus(p.status),
       configured_at: p.configured_at,
       started_at: p.started_at,
       finished_at: p.finished_at,

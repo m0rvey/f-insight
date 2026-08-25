@@ -22,7 +22,18 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handler.init().then(() => handler.handleMessage(message, sender)).then(sendResponse);
+  handler
+    .init()
+    .then(() => handler.handleMessage(message, sender))
+    .then(sendResponse)
+    // Always close the message channel — otherwise the content script waits
+    // for the full response timeout when init/handleMessage rejects.
+    .catch((err) => {
+      console.error('[f-insight:Background] Message handling failed:', err);
+      try {
+        sendResponse({ success: false, error: err?.message || 'Internal background error' });
+      } catch {}
+    });
   return true; // Keep channel open for async response
 });
 

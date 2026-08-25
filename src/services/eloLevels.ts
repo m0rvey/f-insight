@@ -38,7 +38,9 @@ export interface LevelProgressResult {
 export function calculateLevelProgress(
   rawElo: number
 ): LevelProgressResult {
-  const currentElo = Math.max(1, Math.round(rawElo || 1000));
+  // elo=0 is a legitimate fresh-account value — only non-finite inputs fall
+  // back to the neutral default (plain `||` would turn 0 into 1000).
+  const currentElo = Number.isFinite(rawElo) ? Math.max(1, Math.round(rawElo)) : 1000;
 
   // Determine actual level based on Elo
   let level = 1;

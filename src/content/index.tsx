@@ -599,6 +599,11 @@ class ContentEngine {
 
     if (!host) {
       const shadow = createShadowContainer(hostId);
+      // The host itself is the fixed anchor: `contain: content` on the shadow
+      // container makes it a containing block for position:fixed descendants,
+      // so the FAB must live on the host (same pattern as the modal host).
+      shadow.host.style.cssText =
+        'all: initial; position: fixed; bottom: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; align-items: flex-end; gap: 0; pointer-events: auto; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;';
       document.body.appendChild(shadow.host);
       this.floatingRoot = createRoot(shadow.container);
       forceRender = true;

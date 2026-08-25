@@ -54,14 +54,22 @@ export function detectCurrentPlayer(
           try {
             const parts = token.split('.');
             if (parts.length === 3) {
-              const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-              const decoded = typeof atob === 'function' ? atob(base64) : '';
-              if (decoded) {
-                const payload = JSON.parse(decoded);
-                if (payload.nickname) candidateNicknames.push(payload.nickname);
-                if (payload.sub) candidateIds.push(payload.sub);
-                if (payload.id) candidateIds.push(payload.id);
-                if (payload.guid) candidateIds.push(payload.guid);
+              // JWT segments use base64url WITHOUT padding — atob throws
+              // InvalidCharacterError unless the length is a multiple of 4,
+              // so pad manually. Decode via bytes + TextDecoder to keep
+              // non-ASCII nicknames intact (atob alone returns Latin-1).
+              let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+              while (base64.length % 4 !== 0) base64 += '=';
+              if (typeof atob === 'function') {
+                const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+                const decoded = new TextDecoder().decode(bytes);
+                if (decoded) {
+                  const payload = JSON.parse(decoded);
+                  if (payload.nickname) candidateNicknames.push(payload.nickname);
+                  if (payload.sub) candidateIds.push(payload.sub);
+                  if (payload.id) candidateIds.push(payload.id);
+                  if (payload.guid) candidateIds.push(payload.guid);
+                }
               }
             }
           } catch {

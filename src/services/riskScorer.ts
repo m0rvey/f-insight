@@ -16,8 +16,15 @@ export function calculateRiskScore(
   const recentKd = player.recentKd || kd;
   const recentAdr = player.recentAdr || 75;
 
+  // When the FACEIT stats endpoints failed, totalMatches=0 / kd=1.0 / winRate=0
+  // are fabricated defaults — treating them as "fresh account" would brand
+  // veterans as CRITICAL smurfs. Lifetime-based heuristics are skipped instead.
+  const lifetimeKnown = player.statsAvailable !== false;
+
   // 1. Matches vs Elo check (Core Smurf Curve)
-  if (elo >= 2200 && totalMatches < 100) {
+  if (!lifetimeKnown) {
+    // No lifetime data: only Elo/registration/Steam signals are evaluated below.
+  } else if (elo >= 2200 && totalMatches < 100) {
     const weight = 45;
     score += weight;
     flags.push({
@@ -78,7 +85,7 @@ export function calculateRiskScore(
   }
 
   // 2. K/D Ratio Anomaly
-  if (kd >= 2.0) {
+  if (lifetimeKnown && kd >= 2.0) {
     const weight = 30;
     score += weight;
     flags.push({
@@ -117,7 +124,7 @@ export function calculateRiskScore(
   }
 
   // 2b. ADR Anomaly (reliable ADR only — no fabricated fallbacks)
-  if (player.overallAdr !== undefined && player.overallAdr >= 95 && totalMatches < 300) {
+  if (lifetimeKnown && player.overallAdr !== undefined && player.overallAdr >= 95 && totalMatches < 300) {
     const weight = 22;
     score += weight;
     flags.push({
@@ -180,7 +187,7 @@ export function calculateRiskScore(
   }
 
   // 3. Win Rate Anomaly
-  if (winRate >= 80 && totalMatches >= 10) {
+  if (lifetimeKnown && winRate >= 80 && totalMatches >= 10) {
     const weight = 30;
     score += weight;
     flags.push({
@@ -273,71 +280,10 @@ export function calculateRiskScore(
   // 5. Steam Profile Analysis
   let isPrivateSteam = true;
 
-  if (steam?.fetchError) {
-    // Steam data unavailable (network/rate-limit) — skip steam-based analysis
+  if (!steam || steam.fetchError) {
+    // No Steam data available (no ID / network / rate-limit) — no privacy assumption
     isPrivateSteam = false;
-  } else if (steam && !steam.isPrivate && steam.summary) {
-    isPrivateSteam = false;
-
-    // Steam CS2 Hours vs Elo
-    const hours = steam.playtime?.cs2HoursTotal ?? 0;
-    if (hours > 0 && hours < 150 && elo >= 1600) {
-      const weight = 30;
-      score += weight;
-      flags.push({
-        id: 'low_steam_hours',
-        title: 'Very Low CS2 Hours for Elo Rating',
-        description: `Only ${hours}h in CS2 with ${elo} Elo`,
-        weight,
-        severity: 'danger',
-        category: 'STEAM_HOURS',
-      });
-    } else if (hours > 0 && hours < 350 && elo >= 2000) {
-      const weight = 20;
-      score += weight;
-      flags.push({
-        id: 'moderate_hours_high_elo',
-        title: 'Low Hours for Level 10',
-        description: `${hours}h total on Level 10 account`,
-        weight,
-        severity: 'warning',
-        category: 'STEAM_HOURS',
-      });
-    } else if (hours >= 2500) {
-      // Veteran player hours dampener
-      score -= 15;
-    }
-
-    // Steam Account Age
-    const ageYears = steam.summary.accountAgeYears;
-    if (ageYears !== undefined && ageYears < 1.0 && elo >= 1400) {
-      const weight = 18;
-      score += weight;
-      flags.push({
-        id: 'fresh_steam_account',
-        title: 'Fresh Steam Account (<1 Year)',
-        description: `Steam account created only ${ageYears.toFixed(1)} years ago`,
-        weight,
-        severity: 'warning',
-        category: 'STEAM_AGE',
-      });
-    }
-
-    // Steam Ban History
-    if (steam.bans?.vacBanned || steam.bans?.numberOfGameBans) {
-      const totalBans = (steam.bans.vacBanned ? 1 : 0) + (steam.bans.numberOfGameBans || 0);
-      const weight = 25;
-      score += weight;
-      flags.push({
-        id: 'steam_ban_history',
-        title: 'Past Ban on Record',
-        description: `Account has ${totalBans} ban(s) on record (${steam.bans.daysSinceLastBan || 0} days ago)`,
-        weight,
-        severity: 'danger',
-        category: 'BAN_HISTORY',
-      });
-    }
-  } else if (steam?.isPrivate) {
+  } else if (steam.isPrivate) {
     isPrivateSteam = true;
     flags.push({
       id: 'private_steam',
@@ -361,7 +307,7 @@ export function calculateRiskScore(
         category: 'PRIVATE_PROFILE',
       });
     }
-    if (totalMatches < 100) {
+    if (lifetimeKnown && totalMatches < 100) {
       const weight = 10;
       score += weight;
       flags.push({
@@ -387,8 +333,72 @@ export function calculateRiskScore(
       });
     }
   } else {
-    // steam === undefined — no Steam ID available, treat as unknown (no privacy assumption)
+    // Public profile (summary/playtime may still be missing on partial payloads)
     isPrivateSteam = false;
+
+    if (steam.summary) {
+      // Steam CS2 Hours vs Elo
+      const playtimeKnown = steam.playtime?.cs2HoursTotal !== undefined;
+      const hours = playtimeKnown ? (steam.playtime!.cs2HoursTotal ?? 0) : 0;
+      const zeroHours = playtimeKnown && hours === 0;
+      if ((hours > 0 && hours < 150 && elo >= 1600) || (zeroHours && elo >= 1600)) {
+        const weight = 30;
+        score += weight;
+        flags.push({
+          id: 'low_steam_hours',
+          title: zeroHours ? 'Zero CS2 Hours for Elo Rating' : 'Very Low CS2 Hours for Elo Rating',
+          description: `Only ${hours}h in CS2 with ${elo} Elo`,
+          weight,
+          severity: 'danger',
+          category: 'STEAM_HOURS',
+        });
+      } else if (hours > 0 && hours < 350 && elo >= 2000) {
+        const weight = 20;
+        score += weight;
+        flags.push({
+          id: 'moderate_hours_high_elo',
+          title: 'Low Hours for Level 10',
+          description: `${hours}h total on Level 10 account`,
+          weight,
+          severity: 'warning',
+          category: 'STEAM_HOURS',
+        });
+      } else if (playtimeKnown && hours >= 2500) {
+        // Veteran player hours dampener
+        score -= 15;
+      }
+
+      // Steam Account Age
+      const ageYears = steam.summary.accountAgeYears;
+      if (ageYears !== undefined && ageYears < 1.0 && elo >= 1400) {
+        const weight = 18;
+        score += weight;
+        flags.push({
+          id: 'fresh_steam_account',
+          title: 'Fresh Steam Account (<1 Year)',
+          description: `Steam account created only ${ageYears.toFixed(1)} years ago`,
+          weight,
+          severity: 'warning',
+          category: 'STEAM_AGE',
+        });
+      }
+    }
+  }
+
+  // 5b. Steam Ban History — strongest independent signal, evaluated whenever
+  // ban data exists regardless of summary/playtime availability.
+  if (steam && !steam.fetchError && !steam.isPrivate && steam.bans && (steam.bans.vacBanned || steam.bans.numberOfGameBans)) {
+    const totalBans = (steam.bans.vacBanned ? 1 : 0) + (steam.bans.numberOfGameBans || 0);
+    const weight = 25;
+    score += weight;
+    flags.push({
+      id: 'steam_ban_history',
+      title: 'Past Ban on Record',
+      description: `Account has ${totalBans} ban(s) on record (${steam.bans.daysSinceLastBan || 0} days ago)`,
+      weight,
+      severity: 'danger',
+      category: 'BAN_HISTORY',
+    });
   }
 
   // 6. FACEIT Account Age (independent of Steam privacy)

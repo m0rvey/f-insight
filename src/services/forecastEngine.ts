@@ -42,7 +42,8 @@ export function calculateProjectedElo(
 
 /**
  * Calculates FCR (Firepower Contribution Rating) for players on a team.
- * Sum of all players on a team equals 100%. (20% is baseline, >25% indicates a primary carry).
+ * Shares are normalized so the rounded values always total exactly 100%
+ * (20% is baseline, >25% indicates a primary carry).
  */
 export function calculateTeamFcr(
   teamPlayers: FaceitPlayerFullStats[]
@@ -54,7 +55,9 @@ export function calculateTeamFcr(
     const rawElo = Number.isFinite(p.elo) ? p.elo : 1000;
     const eloWeight = Math.max(500, rawElo || 1000) / 1000;
     const rawKd = Number.isFinite(p.last30Kd) ? p.last30Kd : (Number.isFinite(p.overallKd) ? p.overallKd : 1.0);
-    const kdWeight = Math.max(0.4, rawKd ?? 1.0);
+    // Cap the K/D weight both ways: 60/0-style outliers must not swallow the
+    // whole share, and sub-0.4 baselines stay meaningful.
+    const kdWeight = Math.min(2.5, Math.max(0.4, rawKd ?? 1.0));
     const rawAdr = Number.isFinite(p.last30Adr) ? p.last30Adr : (Number.isFinite(p.overallAdr) ? p.overallAdr : 75);
     const adrWeight = 1 + ((rawAdr ?? 75) - 75) / 150;
     const power = eloWeight * kdWeight * Math.max(0.6, adrWeight);
@@ -64,9 +67,31 @@ export function calculateTeamFcr(
   const totalPower = powers.reduce((sum, item) => sum + item.power, 0);
   const safeTotalPower = Number.isFinite(totalPower) && totalPower > 0 ? totalPower : 0;
 
+  if (safeTotalPower <= 0) {
+    const evenShare = parseFloat((100 / teamPlayers.length).toFixed(1));
+    for (const item of powers) {
+      result[item.id] = evenShare;
+    }
+    return result;
+  }
+
+  // Assign rounded shares, then give the residual to the largest contributor
+  // so the displayed values always add up to exactly 100%.
+  let assigned = 0;
+  let biggestId = '';
+  let biggestValue = -1;
   for (const item of powers) {
-    const percent = safeTotalPower > 0 ? (item.power / safeTotalPower) * 100 : 100 / teamPlayers.length;
-    result[item.id] = parseFloat(percent.toFixed(1));
+    const percent = parseFloat((item.power / safeTotalPower * 100).toFixed(1));
+    result[item.id] = percent;
+    assigned += percent;
+    if (percent > biggestValue) {
+      biggestValue = percent;
+      biggestId = item.id;
+    }
+  }
+  const residual = parseFloat((100 - assigned).toFixed(1));
+  if (residual !== 0 && biggestId) {
+    result[biggestId] = parseFloat((result[biggestId] + residual).toFixed(1));
   }
 
   return result;
@@ -102,7 +127,10 @@ export function evaluatePlayerForm(
     const totalDeaths = validMatches.reduce((sum, m) => sum + (m.deaths || 0), 0);
     recentKd = totalDeaths > 0
       ? parseFloat((totalKills / totalDeaths).toFixed(2))
-      : parseFloat(baselineKd.toFixed(2));
+      // A flawless 60/0 sample must not collapse back to the baseline — that
+      // would hide exactly the outlier performance worth flagging. Cap by a
+      // conservative "min deaths per match" denominator instead.
+      : parseFloat(Math.max(baselineKd, totalKills / (validMatches.length * 2)).toFixed(2));
   }
 
   const validAdrs = last5.map((m) => m.adr).filter((a): a is number => typeof a === 'number' && Number.isFinite(a) && a > 0);
@@ -113,9 +141,11 @@ export function evaluatePlayerForm(
   const ratio = recentKd / baselineKd;
 
   let formStatus: PlayerFormStatus = 'STABLE';
-  if (ratio >= 1.15 || (recentKd >= 1.4 && last5.filter((m) => m.result === 'W').length >= 4)) {
+  // Symmetric ±15% thresholds around the personal baseline
+  // (1/1.15 ≈ 0.87 is the exact mirror of +15%).
+  if (ratio >= 1.15) {
     formStatus = 'HOT';
-  } else if (ratio <= 0.82 || (recentKd <= 0.75 && last5.filter((m) => m.result === 'L').length >= 4)) {
+  } else if (ratio <= 1 / 1.15) {
     formStatus = 'COLD';
   }
 
@@ -143,8 +173,6 @@ export function calculateAdvancedMatchPrediction(params: {
   f2Fcr: Record<string, number>;
 }): AdvancedMatchPrediction {
   const {
-    f1AvgElo,
-    f2AvgElo,
     f1Players,
     f2Players,
     selectedMap,
@@ -154,6 +182,16 @@ export function calculateAdvancedMatchPrediction(params: {
     f2Fcr,
   } = params;
 
+  // Defensive input sanitization: never allow NaN/Infinity Elo into the logistic curve
+  const safeF1AvgElo = Number.isFinite(params.f1AvgElo)
+    ? Math.max(100, Math.min(6000, params.f1AvgElo))
+    : 1000;
+  const safeF2AvgElo = Number.isFinite(params.f2AvgElo)
+    ? Math.max(100, Math.min(6000, params.f2AvgElo))
+    : 1000;
+  const f1AvgElo = safeF1AvgElo;
+  const f2AvgElo = safeF2AvgElo;
+
   // 1. Base Elo Probability (Logistic curve)
   const eloDiff = f2AvgElo - f1AvgElo;
   const baseWinProbF1 = 1 / (1 + Math.pow(10, eloDiff / 400));
@@ -161,20 +199,27 @@ export function calculateAdvancedMatchPrediction(params: {
   // 2. Map Advantage Factor
   let mapDelta = 0;
   let mapAdvantageData: AdvancedMatchPrediction['factors']['mapAdvantage'] = undefined;
-  const cleanMap = (selectedMap || '').replace('de_', '').toLowerCase();
+  const cleanMap = (selectedMap || '').replace(/^(cs2_|csgo_|de_)/, '').toLowerCase();
 
   if (cleanMap) {
     const f1MapWins = f1Players.reduce((acc, p) => acc + (p.mapStats?.[cleanMap]?.wins || 0), 0);
     const f1MapMatches = f1Players.reduce((acc, p) => acc + (p.mapStats?.[cleanMap]?.matches || 0), 0);
-    const f1Wr = f1MapMatches > 0 ? Math.round((f1MapWins / f1MapMatches) * 100) : 50;
 
     const f2MapWins = f2Players.reduce((acc, p) => acc + (p.mapStats?.[cleanMap]?.wins || 0), 0);
     const f2MapMatches = f2Players.reduce((acc, p) => acc + (p.mapStats?.[cleanMap]?.matches || 0), 0);
-    const f2Wr = f2MapMatches > 0 ? Math.round((f2MapWins / f2MapMatches) * 100) : 50;
+
+    // Bayesian sample-weighted win rates (shrink toward 50%) — the same
+    // estimator the veto module uses, so both views can't disagree because
+    // one player's lucky 3-0 sample skews the prediction.
+    const f1Wr = Math.round(((f1MapWins + 2.5) / (f1MapMatches + 5)) * 100);
+    const f2Wr = Math.round(((f2MapWins + 2.5) / (f2MapMatches + 5)) * 100);
 
     const deltaWr = f1Wr - f2Wr;
-    // Map shift: up to ±12%
-    mapDelta = Math.max(-0.12, Math.min(0.12, (deltaWr / 100) * 0.25));
+    // Require a minimal combined sample before shifting the odds at all.
+    if (f1MapMatches + f2MapMatches >= 10) {
+      // Map shift: up to ±12%
+      mapDelta = Math.max(-0.12, Math.min(0.12, (deltaWr / 100) * 0.25));
+    }
 
     mapAdvantageData = {
       leader: deltaWr >= 5 ? 'faction1' : deltaWr <= -5 ? 'faction2' : 'balanced',
@@ -230,18 +275,17 @@ export function calculateAdvancedMatchPrediction(params: {
   const winChanceF2 = 100 - winChanceF1;
 
   // 6. MR12 Predicted Score Line
+  // In CS2 MR12 overtime is triggered at 12:12, so "OT likely" means the
+  // matchup is close enough that a regulation 13:X finish is a coin flip —
+  // not a specific final scoreline (OT finals look like 16:13/16:14).
   let f1Score = 13;
   let f2Score = 9;
-  let isOvertimeLikely = false;
-
   const diffProb = Math.abs(winChanceF1 - 50);
-  if (diffProb <= 3) {
+  const isOvertimeLikely = diffProb <= 8;
+
+  if (diffProb <= 8) {
     f1Score = winChanceF1 >= 50 ? 13 : 11;
     f2Score = winChanceF1 >= 50 ? 11 : 13;
-    isOvertimeLikely = true;
-  } else if (diffProb <= 8) {
-    f1Score = winChanceF1 >= 50 ? 13 : 10;
-    f2Score = winChanceF1 >= 50 ? 10 : 13;
   } else if (diffProb <= 16) {
     f1Score = winChanceF1 >= 50 ? 13 : 8;
     f2Score = winChanceF1 >= 50 ? 8 : 13;
