@@ -400,7 +400,7 @@ export function calculateAdvancedMatchPrediction(params: {
 
 export interface MapVetoRankItem {
   mapName: string;
-  rank: number; // 1 to 7
+  rank: number; // 1 to N (map pool size)
   recommendation: 'MUST_PICK' | 'SAFE_PICK' | 'BALANCED' | 'RISK_BAN' | 'PERMABAN';
   badgeColor: string;
   f1Matches: number;
@@ -504,7 +504,7 @@ export function calculateMapVetoRanking(params: {
   // Sort maps by advantageDelta descending
   items.sort((a, b) => b.advantageDelta - a.advantageDelta);
 
-  // Assign ranks 1 to 7 and recommendations
+  // Assign ranks 1..N and recommendations
   items.forEach((item, idx) => {
     item.rank = idx + 1;
     if (item.advantageDelta >= 15) {
