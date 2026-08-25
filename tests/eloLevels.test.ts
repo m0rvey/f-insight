@@ -42,4 +42,16 @@ describe('eloLevels service', () => {
     expect(progress.previousLevel).toBe(9);
     expect(progress.pointsToDemotion).toBe(449); // 2450 - 2001
   });
+
+  it('should treat elo=0 as a legitimate fresh account (level 1), not as missing data', () => {
+    const progress = calculateLevelProgress(0);
+    expect(progress.currentLevel).toBe(1);
+    expect(Number.isFinite(progress.progressPercent)).toBe(true);
+  });
+
+  it('should fall back to the neutral default only for non-finite Elo', () => {
+    const progress = calculateLevelProgress(NaN);
+    expect(progress.currentLevel).toBeGreaterThan(1);
+    expect(Number.isFinite(progress.progressPercent)).toBe(true);
+  });
 });

@@ -141,6 +141,69 @@ describe('forecastEngine', () => {
       expect(pred.factors.mapAdvantage?.leader).toBe('faction1');
       expect(pred.predictedScore.f1Score).toBe(13);
     });
+
+    it('should NOT shift odds from a tiny map sample (Bayesian significance gate)', () => {
+      // One lucky 3-0 map must not swing the prediction — combined sample < 10
+      const tinyMapPlayer = (id: string, wr: number): FaceitPlayerFullStats => ({
+        ...createDummyPlayer(id, 1500, 'STABLE', wr),
+        mapStats: {
+          mirage: {
+            mapName: 'mirage', matches: 3, wins: Math.round((3 * wr) / 100), losses: 0,
+            winRate: wr, kd: 1.1, hsPercent: 50, avgKills: 18, avgAdr: 80,
+          },
+        },
+      });
+
+      const pred = calculateAdvancedMatchPrediction({
+        f1AvgElo: 1500,
+        f2AvgElo: 1500,
+        f1Players: [tinyMapPlayer('f1_a', 100)],
+        f2Players: [tinyMapPlayer('f2_a', 0)],
+        selectedMap: 'de_mirage',
+        premadeGroups: [],
+        riskAnalysis: {},
+        f1Fcr: {},
+        f2Fcr: {},
+      });
+
+      expect(pred.winChanceF1).toBe(50);
+    });
+
+    it('should mirror predicted scores and flag overtime only for genuinely close matchups', () => {
+      const teamA = [1, 2, 3, 4, 5].map((i) => createDummyPlayer(`a_${i}`, 1510, 'STABLE'));
+      const teamB = [1, 2, 3, 4, 5].map((i) => createDummyPlayer(`b_${i}`, 1490, 'STABLE'));
+
+      const closePred = calculateAdvancedMatchPrediction({
+        f1AvgElo: 1510,
+        f2AvgElo: 1490,
+        f1Players: teamA,
+        f2Players: teamB,
+        premadeGroups: [],
+        riskAnalysis: {},
+        f1Fcr: {},
+        f2Fcr: {},
+      });
+      expect(Math.abs(closePred.winChanceF1 - 50)).toBeLessThanOrEqual(8);
+      expect(closePred.predictedScore.isOvertimeLikely).toBe(true);
+      expect(closePred.predictedScore.f1Score).toBe(13);
+      expect(closePred.predictedScore.f2Score).toBe(11);
+
+      const dominantPred = calculateAdvancedMatchPrediction({
+        f1AvgElo: 2200,
+        f2AvgElo: 1100,
+        f1Players: teamA,
+        f2Players: teamB,
+        premadeGroups: [],
+        riskAnalysis: {},
+        f1Fcr: {},
+        f2Fcr: {},
+      });
+      expect(dominantPred.predictedScore.isOvertimeLikely).toBe(false);
+      // Mirror invariant
+      expect(dominantPred.winChanceF1 + dominantPred.winChanceF2).toBe(100);
+      expect(dominantPred.predictedScore.f1Score).toBe(13);
+      expect(dominantPred.predictedScore.f2Score).toBeLessThanOrEqual(8);
+    });
   });
 
   describe('smurf risk factor', () => {

@@ -144,6 +144,57 @@ describe('parsePlayerPayload', () => {
     expect(result.last30Adr).toBe(85);
     expect(result.last30WinRate).toBe(100);
   });
+
+  it('should strip thousands separators from lifetime and segment numbers', () => {
+    const user = { nickname: 'CommaGuy', games: { cs2: { faceit_elo: 2100, skill_level: 10 } } };
+    const stats = {
+      lifetime: {
+        'Total Matches': '1,234',
+        'Win Rate %': '55',
+        'Average K/D Ratio': '1.10',
+        'Average Headshots %': '48',
+      },
+      segments: [
+        {
+          _id: { segmentId: 'cs2_mirage' },
+          stats: {
+            Matches: '1,100',
+            Wins: '620',
+            'Win Rate %': '56',
+            'K/D Ratio': '1.1',
+          },
+        },
+      ],
+    };
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, user, stats, null, []);
+
+    expect(result.totalMatches).toBe(1234);
+    expect(result.mapStats['mirage'].matches).toBe(1100);
+    expect(result.mapStats['mirage'].wins).toBe(620);
+  });
+
+  it('should mark statsAvailable=false and never NaN when lifetime data is missing', () => {
+    // Simulates a partial API failure: /users/v1 answered, stats endpoints failed
+    const user = { nickname: 'NoStats', games: { cs2: { faceit_elo: 2400, skill_level: 10 } } };
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, user, null, null, []);
+
+    expect(result.statsAvailable).toBe(false);
+    expect(result.totalMatches).toBe(0);
+    expect(Number.isFinite(result.overallKd)).toBe(true);
+    expect(Number.isFinite(result.elo)).toBe(true);
+  });
+
+  it('should mark statsAvailable=true when lifetime aggregates are present', () => {
+    const user = { nickname: 'HasStats', games: { cs2: { faceit_elo: 1500, skill_level: 6 } } };
+    const stats = { lifetime: { m1: '120', k6: '52', k5: '1.05', k8: '45' }, segments: [] };
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, user, stats, null, []);
+
+    expect(result.statsAvailable).toBe(true);
+    expect(result.totalMatches).toBe(120);
+  });
 });
 
 describe('parseMatchPayload', () => {

@@ -296,4 +296,115 @@ describe('calculateRiskScore', () => {
     expect(result.flags.some((f) => f.id === 'fresh_faceit_high_elo')).toBe(true);
     expect(result.score).toBeGreaterThanOrEqual(45);
   });
+
+  it('should flag ban history even when Steam summary is missing', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'ban-1',
+      nickname: 'BanNoSummary',
+      avatar: '',
+      country: 'se',
+      elo: 1500,
+      skillLevel: 6,
+      totalMatches: 400,
+      overallWinRate: 52,
+      overallKd: 1.05,
+      overallHsPercent: 46,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.05,
+      recentAdr: 75,
+    };
+
+    // Partial cached payload: public profile with bans but no summary/playtime
+    const steam: SteamFullData = {
+      isPrivate: false,
+      bans: {
+        steamId64: '76561198000000003',
+        communityBanned: false,
+        vacBanned: true,
+        numberOfVACBans: 1,
+        daysSinceLastBan: 120,
+        numberOfGameBans: 0,
+        economyBan: 'none',
+      },
+      fetchedAt: Date.now(),
+    };
+
+    const result = calculateRiskScore(player, steam);
+    expect(result.flags.some((f) => f.id === 'steam_ban_history')).toBe(true);
+  });
+
+  it('should not apply lifetime-based smurf flags when stats are unavailable (partial API failure)', () => {
+    // Veteran with 3000 matches — but the stats endpoint failed, so the parser
+    // produced fabricated defaults (totalMatches=0). This must NOT be read as
+    // a fresh account.
+    const player = {
+      playerId: 'vet-1',
+      nickname: 'VeteranRateLimited',
+      avatar: '',
+      country: 'se',
+      elo: 2400,
+      skillLevel: 10,
+      totalMatches: 0,
+      overallWinRate: 0,
+      overallKd: 1.0,
+      overallHsPercent: 0,
+      statsAvailable: false,
+      currentStreak: { type: 'NONE' as const, count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE' as const,
+      recentKd: 1.0,
+      recentAdr: 75,
+    } as FaceitPlayerFullStats;
+
+    const result = calculateRiskScore(player, undefined);
+    expect(result.flags.some((f) => f.category === 'MATCHES_ELO')).toBe(false);
+    expect(result.flags.some((f) => f.category === 'KD_ANOMALY')).toBe(false);
+    expect(result.flags.some((f) => f.category === 'WINRATE_ANOMALY')).toBe(false);
+    expect(result.level).toBe('LOW');
+  });
+
+  it('should treat zero CS2 hours on a high-Elo public account as suspicious', () => {
+    const player: FaceitPlayerFullStats = {
+      playerId: 'zero-1',
+      nickname: 'ZeroHours',
+      avatar: '',
+      country: 'de',
+      elo: 2100,
+      skillLevel: 10,
+      totalMatches: 500,
+      overallWinRate: 55,
+      overallKd: 1.15,
+      overallHsPercent: 48,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 1.15,
+      recentAdr: 80,
+    };
+
+    const steam: SteamFullData = {
+      isPrivate: false,
+      summary: {
+        steamId64: '76561198000000004',
+        personaName: 'ZeroHoursSteam',
+        profileUrl: '',
+        avatar: '',
+        communityVisibilityState: 3,
+        accountAgeYears: 5,
+      },
+      playtime: {
+        cs2HoursTotal: 0,
+        cs2HoursLast2Weeks: 0,
+      },
+      fetchedAt: Date.now(),
+    };
+
+    const result = calculateRiskScore(player, steam);
+    expect(result.flags.some((f) => f.id === 'low_steam_hours')).toBe(true);
+  });
 });
