@@ -96,8 +96,6 @@ A prebuilt bundle is already committed in the [`dist/`](../dist/) folder — **i
 2. Open `chrome://extensions/` → enable **Developer mode** → **Load unpacked** → select the `dist` folder.
 3. After an extension update, press **Reload** on its card (same folder) — or remove and re-add it if you extracted to a new location.
 
-> `otherproject/` — local references to other extensions for studying original solutions. Ignored via `.gitignore:5` and never committed, kept locally for dev convenience.
-
 ### Build from source
 
 Requires **Node.js 18+** (current LTS recommended; check with `node -v`). Older versions fail with cryptic esbuild errors.
