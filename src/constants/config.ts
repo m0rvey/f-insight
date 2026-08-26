@@ -65,14 +65,14 @@ export const DOM_CONFIG = {
 } as const;
 
 export const CONTENT_CONFIG = {
-  MAX_ZERO_TARGET_ATTEMPTS: 20,
+  MAX_ZERO_TARGET_ATTEMPTS: 8,
   WARN_AFTER_ZERO_TARGET_ATTEMPTS: 3,
-  /** Early retries (attempts 1-3) */
-  ZERO_TARGET_RETRY_EARLY_MS: 2000,
+  /** Early retries (attempts 1-3) — fast path for initial roster render */
+  ZERO_TARGET_RETRY_EARLY_MS: 500,
   /** Late retries (attempts 4+) */
-  ZERO_TARGET_RETRY_LATE_MS: 6000,
+  ZERO_TARGET_RETRY_LATE_MS: 2000,
   /** Disable text fallback after this many attempts (expensive walk) */
-  TEXT_FALLBACK_DISABLE_AFTER: 5,
+  TEXT_FALLBACK_DISABLE_AFTER: 3,
   /** Early retry threshold for text fallback toggle */
   ZERO_TARGET_EARLY_RETRY_COUNT: 3,
   LOAD_TIMEOUT_MS: 20_000,

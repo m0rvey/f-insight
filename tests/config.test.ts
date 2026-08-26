@@ -31,8 +31,10 @@ describe('config — centralized magic numbers', () => {
   });
 
   it('content retry and dormancy constants are bounded', () => {
-    expect(CONTENT_CONFIG.MAX_ZERO_TARGET_ATTEMPTS).toBe(20);
+    expect(CONTENT_CONFIG.MAX_ZERO_TARGET_ATTEMPTS).toBe(8);
     expect(CONTENT_CONFIG.WARN_AFTER_ZERO_TARGET_ATTEMPTS).toBe(3);
+    expect(CONTENT_CONFIG.ZERO_TARGET_RETRY_EARLY_MS).toBe(500);
+    expect(CONTENT_CONFIG.ZERO_TARGET_RETRY_LATE_MS).toBe(2000);
     expect(CONTENT_CONFIG.LOAD_TIMEOUT_MS).toBe(20_000);
     expect(CONTENT_CONFIG.MAX_OBSERVED_IDENTITIES).toBe(10);
   });

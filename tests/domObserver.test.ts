@@ -211,7 +211,8 @@ describe('DomObserver fallback log noise + selector learning', () => {
       expect(targets.map((t) => t.nickname).sort()).toEqual(['device', 's1mple']);
     }
 
-    expect(recoveryWarns()).toHaveLength(1);
+    // Full recovery (2/2) now logs as debug to reduce noise on new FACEIT markup — not a warning
+    expect(recoveryWarns()).toHaveLength(0);
     expect(recoveryDebugs().length).toBeGreaterThanOrEqual(1);
   });
 
@@ -237,8 +238,8 @@ describe('DomObserver fallback log noise + selector learning', () => {
     expect(second.map((t) => t.nickname).sort()).toEqual(
       ['p1layer', 'p2layer', 'p3layer', 'p4layer', 'p5layer'].sort()
     );
-    // Only the very first scan ever warned.
-    expect(recoveryWarns()).toHaveLength(1);
+    // Full recovery now logs as debug — no warn
+    expect(recoveryWarns()).toHaveLength(0);
   });
 
   it('does NOT adopt a generic signature whose page matches are mostly non-roster', () => {

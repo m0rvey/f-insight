@@ -23,6 +23,8 @@ const CARD_SELECTORS = [
   '[class*="MatchPlayer"]',
   '[class*="Roster__Player"]',
   '[data-testid*="team-member"]',
+  '[role="listitem"]',
+  '[class*="ListItem"]',
 ] as const;
 const CARD_SELECTORS_JOINED = CARD_SELECTORS.join(', ');
 
@@ -96,6 +98,7 @@ export class DomObserver {
     this.observer.observe(document.body, {
       childList: true,
       subtree: true,
+      characterData: true,
     });
   }
 
@@ -135,6 +138,7 @@ export class DomObserver {
       '[class*="MatchPage__Container"]',
       '[class*="MatchOverview"]',
       '[class*="MatchLayout"]',
+      '[class*="Room"]',
       '[class*="match-vs"]',
       '[class*="match-header"]',
       '[class*="VotingLayout"]',
@@ -185,11 +189,14 @@ export class DomObserver {
       if (missing.length > 0) {
         const recovered = this.scanTargetsByNicknameText(missing, targets);
         if (recovered.length > 0) {
-          // Warn once per distinct recovery signature; identical repeats
-          // (same miss/recover counts on later rescans) downgrade to debug.
+          // Successful full recovery is not an error — downgrade to debug to avoid noise on new FACEIT markup
+          // Only warn when fallback *failed* to recover all missing rows
+          const fullyRecovered = recovered.length === missing.length;
           const logKey = `${missing.length}:${recovered.length}`;
           const message = `[f-insight:DomObserver] Primary selectors missed ${missing.length} roster rows — text fallback recovered ${recovered.length}`;
-          if (this.lastFallbackLogKey !== logKey) {
+          if (fullyRecovered) {
+            console.debug(message + ' (full recovery — primary selectors need update)');
+          } else if (this.lastFallbackLogKey !== logKey) {
             this.lastFallbackLogKey = logKey;
             console.warn(message);
           } else {
@@ -197,6 +204,13 @@ export class DomObserver {
           }
           if (recovered.length >= Math.min(5, missing.length)) {
             this.learnRowSelectors(recovered, rosterNicknames);
+          }
+        } else if (missing.length > 0) {
+          // Nothing recovered — this is the real error case
+          const logKey = `${missing.length}:0`;
+          if (this.lastFallbackLogKey !== logKey) {
+            this.lastFallbackLogKey = logKey;
+            console.warn(`[f-insight:DomObserver] Primary selectors missed ${missing.length} roster rows — text fallback recovered 0 (markup changed?)`);
           }
         }
         for (const t of recovered) {
@@ -235,7 +249,10 @@ export class DomObserver {
     const targets: PlayerElementTarget[] = [];
     const seen = new Set<string>();
 
-    const candidates = document.querySelectorAll(
+    // Scope to match room to avoid scanning 3000+ nodes in header/chat — 80% faster
+    const scopeRoot =
+      (document.querySelector('[class*="MatchRoom"], [class*="match-room"], [class*="MatchPage"], main, #main-content') as HTMLElement | null) || document.documentElement;
+    const candidates = (scopeRoot as Element).querySelectorAll(
       'a, span, div, p, td, th, h5, h6, [class*="nickname"], [class*="Nickname"]'
     );
 

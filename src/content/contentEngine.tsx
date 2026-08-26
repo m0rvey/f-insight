@@ -71,11 +71,10 @@ class ContentEngine {
 
   async init() {
     console.log('[f-insight:Content] Initialized content script');
-    try {
-      await this.loadSettings();
-    } catch (err) {
+    // Load settings without blocking init — SW may be sleeping and storage slow
+    this.loadSettings().catch((err) => {
       console.warn('[f-insight:Content] Failed to load settings, using defaults:', err);
-    }
+    });
 
     // Every subsystem is wrapped so a single failure can never kill the engine.
     try {
@@ -117,6 +116,11 @@ class ContentEngine {
 
     try {
       this.domObserver.startObserving(() => this.handleDomUpdate());
+      // Fast initial checks — FACEIT SPA often renders roster 200-800ms after document_end
+      // Ensure we don't wait 2s for the retry timer on first load
+      setTimeout(() => this.handleDomUpdate(), 300);
+      setTimeout(() => this.handleDomUpdate(), 1000);
+      setTimeout(() => this.handleDomUpdate(), 2000);
     } catch (err) {
       console.warn('[f-insight:Content] domObserver registration failed:', err);
     }
@@ -399,8 +403,19 @@ class ContentEngine {
         console.warn('[f-insight:Content] Failed to load lobby data:', res?.error);
         this.handleFetchFailure(matchId);
       }
-    } catch (err) {
+    } catch (err: any) {
       if (matchId !== this.currentMatchId) return;
+      const msg = String(err?.message || err);
+      // SW may be sleeping — "Receiving end does not exist" means it will wake on next message
+      const isSwSleep = msg.includes('Receiving end does not exist') || msg.includes('Extension context invalidated');
+      if (isSwSleep && this.retryCount < 2) {
+        console.warn('[f-insight:Content] SW sleep, retrying quickly:', msg);
+        this.retryCount++;
+        setTimeout(() => {
+          if (matchId === this.currentMatchId) this.fetchLobbyData(matchId, forceRefresh).catch(() => {});
+        }, 600);
+        return;
+      }
       console.error('[f-insight:Content] Error sending message to background:', err);
       this.handleFetchFailure(matchId);
     } finally {
@@ -627,8 +642,11 @@ class ContentEngine {
   }
 
   private renderMainWidget(forceRender: boolean = true) {
-    if (!this.currentMatchId || !this.lobbyPayload) return;
+    if (!this.currentMatchId) return;
     if (!this.isStillOnMatchPage()) return;
+    // Always render when loading, even without payload — show skeleton instead of blank
+    const hasPayload = !!this.lobbyPayload;
+    if (!hasPayload && !this.isLoading) return;
 
     const mountPoint = this.domObserver.findMatchHeaderMountPoint();
     if (!mountPoint) return;
@@ -641,13 +659,38 @@ class ContentEngine {
       mountPoint.prepend(shadow.host);
       this.mainRoot = createRoot(shadow.container);
       forceRender = true;
+    } else if (host.parentElement !== mountPoint && mountPoint !== document.body && !mountPoint.contains(host)) {
+      try {
+        mountPoint.prepend(host);
+        forceRender = true;
+      } catch {}
     }
+
+    // When loading without payload yet, render skeleton with minimal match shell
+    const payloadForRender: LobbyAnalysisPayload =
+      this.lobbyPayload ||
+      (this.isLoading
+        ? ({
+            match: {
+              match_id: this.currentMatchId!,
+              game: 'cs2',
+              region: 'EU',
+              status: 'VOTING',
+              teams: {
+                faction1: { faction_id: 'faction1', name: 'Team 1', roster: [] },
+                faction2: { faction_id: 'faction2', name: 'Team 2', roster: [] },
+              },
+            } as FaceitMatchDetails,
+            isPartial: true,
+          } as LobbyAnalysisPayload)
+        : null)!;
+    if (!payloadForRender) return;
 
     if (this.mainRoot && forceRender) {
       this.mainRoot.render(
         <React.StrictMode>
           <LobbyWidget
-            payload={this.lobbyPayload}
+            payload={payloadForRender}
             isLoading={this.isLoading}
             currentUser={this.currentUser || undefined}
             onRefresh={() => this.currentMatchId && this.fetchLobbyData(this.currentMatchId, true)}
