@@ -1,7 +1,7 @@
 # 💻 Code Documentation — f-insight
 
-> **Version:** `1.2.1` · **Last updated:** `2026-08-26` · **Tests:** `136/136` · **Build:** `tsc clean, dist rebuilt`
-> Covers hardening sprint `d372e21 → 8f8d354`. Invariant: **intercepted traffic = PRIMARY, paced API = FALLBACK**.
+> **Version:** `1.2.1` · **Last updated:** `2026-08-26` · **Tests:** `158/158` · **Build:** `tsc clean, dist rebuilt`
+> Covers `d372e21 → 68a188e` (hardening + ADR/map v2 + roles + e2e). Invariant: **intercepted traffic = PRIMARY, paced API = FALLBACK**.
 
 This document outlines the architecture, data flows, and module contracts of `f-insight`.
 
@@ -88,6 +88,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
   Multi-factor CS2 prediction engine:
   - Base Elo curve; all inputs sanitized (non-finite → neutral default).
   - Selected Map delta ($\pm 12\%$) uses the same **Bayesian sample-weighted win rate** as the veto module — $(\text{wins} + 2.5)/(\text{matches} + 5)$ — and only applies when the combined sample reaches **10 matches**, so one lucky 3-0 cannot skew the odds.
+  - Team ADR delta ($\pm 8\%$): `clamp((f1AvgAdr-f2AvgAdr)/130)` when ≥3 players per team have real ADR (5..200), otherwise 0 — firepower beyond Elo (68a188e, point 1).
   - Team Momentum & Hot/Cold players ($\pm 10\%$), Premade party size advantage ($\pm 8\%$), smurf-risk factor.
   - MR12 score simulation: overtime is flagged when $|p - 50| \leq 8$ (a genuine 12:12 risk); score buckets degrade smoothly from `13:11` down to `13:3`.
 
@@ -108,7 +109,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
 - **In-Flight Request Deduplication**: Utilizes internal Promise maps to guarantee that parallel requests for the same match or player share a single network call, eliminating duplicate HTTP traffic. Rejected promises are removed via `finally`, so failures are never cached in-flight.
 - **Timeout & Abort Guards**: Protects all network requests with `AbortController` (8s timeout for Faceit API, 6s timeout for Steam XML), preventing hung connections in service workers.
 - **Input Sanitization & URL Validation**: Validates `matchId` and `playerId` parameters against `/^[a-zA-Z0-9.\-_]+$/` and applies `encodeURIComponent()`. Validates `steamId64` against `/^\d{5,25}$/` — an invalid ID is classified as a fetch error ("no data"), never as a private profile.
-- **Numeric Sanitization**: All parsed stats pass through `toInt`/`toFloat` helpers that strip thousands separators (`"1,234" → 1234`) and coerce garbage (`"N/A"`) into safe fallbacks instead of `NaN`.
+- **Numeric Sanitization**: `toInt`/`toFloat` via `sanitizeNumber` — handles `"1,234"` (thousands `^\d{1,3}(,\d{3})+$` → `1234`), `"84,5"` (RU decimal `,`→`.`) and `"86%"` stripping, `number`-typed payloads, wild-card `c*` scan for drifted columns. See `faceitParser.ts:22` (8a08713 locale fix).
 - **Match History Delta Tracking**: Extracts historical Elo data across past 50 matches to compute accurate per-game Elo gains/losses ($\pm 25$).
 - **Global Request Pacing**: every own `api.faceit.com` call passes a shared tail-chained gate (`FACEIT_MIN_REQUEST_INTERVAL_MS = 400`); the lobby prefetch pool runs 2 workers × 400 ms. The single backoff retry on 429/503/403 injects a 2 s cooldown into the shared gate, so the entire queue waits out a throttle window instead of re-impaling it. This pacing exists because an unpaced 10-player analysis (~30 requests in ~4 s) used to starve FACEIT's own UI fetches and surface as "Action Failed" toasts.
 - **`buildStatsFromInterceptedParts(playerId, {user?, stats?, time?})`**: composes `FaceitPlayerFullStats` from intercepted page-traffic parts through the same `parsePlayerPayload`; returns `null` when all parts are empty; partial parts degrade via the Data Availability Contract (`statsAvailable: false`), never fabricated zeros.
@@ -154,9 +155,8 @@ The parser distinguishes **"unknown data"** from **"zero values"**: when the FAC
 - **Profile payload hydration**: URLs that classify via `classifyInterceptedProfileUrl` (`user` / `stats` / `time` kinds, full-segment playerId validation) are staged per player in `intercept_profile:{playerId}` (~9 min TTL) and recomposed through `buildStatsFromInterceptedParts` into the standard `player_stats:{id}` cache on every new part. Badges and the flyout therefore hydrate from traffic the page itself loaded — zero own requests. Content forwards profile payloads with an 800 ms debounce and triggers one lobby refresh when a full composition lands.
 - **Source ordering invariant**: intercepted page traffic is PRIMARY; f-insight's own paced `api.faceit.com` calls are FALLBACK ONLY. Own requests pass a global pacing gate (min interval, tail-chained queue) with a single backoff retry on 429/503/403. Preserve this ordering in future edits.
 
-### 12. Self-Observing Map Pool — `src/services/mapPool.ts`
-- **Learns instead of guessing**: the previous design probed a guessed config URL (`faceit.com/config/mappool.json`) which only ever produced HTTP 404 noise — and failures were neither cached nor rate-limited in logging. The pool now harvests map names from intercepted match payloads (`harvestMapNamesFromMatchPayload` accepts raw API shapes, parsed details, and single-map fields; `recordObservedMaps` merges them into a 24 h `maps_observed_cache`).
-- **`getActiveMapPool()` returns observed ∪ bundled** (`FALLBACK_CS2_MAPS`): observation may know only a subset of the active pool, the bundled baseline keeps the veto matrix complete. The `source` field reports `'observed' | 'fallback'`.
+### 12. Self-Observing Map Pool — `src/services/mapPool.ts` (v2 `maps_observed_v2`)
+- **Learns instead of guessing**: harvests `voting.map.entities` + `voting.map.pick` + `voting.veto.entities` + `selected_map` via `harvestMapNamesFromMatchPayload` (uuid guids filtered, case-insensitive `de_` strip, deduped). `recordObservedMaps` stores `{name,hits,lastSeen}` with 7-day TTL, prunes `hits<3 && age>7d` (removes `cache/vertigo` after pool rotation) — see 68a188e point 5. `getActiveMapPool()` returns active (`lastSeen<14d` sorted by `hits`) ∪ `FALLBACK_CS2_MAPS` (7 Active Duty 2026-01: mirage/inferno/nuke/ancient/anubis/dust2/train); fallback filtered when `active<5` else only observed-active, legacy `maps_observed_cache` string array still migrated.
 - Zero network requests of its own. A room seen once makes every future room's pre-veto matrix smarter — the veto matrix works from the ACCEPT phase, before FACEIT renders voting entities. `parseMapPoolConfig` stays exported as the tolerant parser contract.
 
 ### 13. Content Resilience & Diagnostics — v1.2.1
@@ -195,3 +195,21 @@ Five consecutive `fix:` commits closed adversarial-review findings. All are cove
 - **`src/content/contentEngine.tsx`** — `ContentEngine` (1034 → ~1030 lines) extracted from `src/content/index.tsx`; `index.tsx` is now a 4-line bootstrap (`new ContentEngine().init()`), keeping the Vite `iife` entry clean.
 - **`otherproject/`** — explicitly documented in `.gitignore:5` as local references for studying original implementations, never committed.
 - **`dist/`** — intentionally tracked (exception to `GIT_AND_RELEASES.md:48`), see `.gitignore:11` and `docs/README.md: Quick way`. CI verifies sync via `git diff --exit-code dist/` after `npm run build`.
+
+### 17. Adversarial Hardening — `8a08713` (P0/P1)
+
+- **Network nonce** `public/network-hook.js:28` + `src/content/netBridge.ts:27`: `crypto.randomUUID()` stored on `documentElement.dataset.fInsightNonce`, every `CustomEvent` carries `detail.nonce`; isolated world rejects mismatched/missing nonce — mitigates trivial page-script forgery of `intercepted_match/player_stats` cache (P0-01). Note: `dataset` is still readable by page script, so this is a hurdle not a proof (proper fix would be `postMessage` origin check).
+- **Server IP** `domObserver.ts:434`: strict `IPv4:port` + scoped to `MatchRoom` containers, ignores `chat`/`code` bubbles — prevents `connect evil.com:27015` clipboard hijack (P0-02). `faceitParser.ts:319` also strict IPv4.
+- **JWT** `currentUserDetector.ts:116`: requires `payload.exp` and `exp*1000 > now-60s`, `alg:none` / expired tokens are skipped — prevents `localStorage` forgery flipping veto perspective (P0-03).
+- **Locale & avatar** `faceitParser.ts:22,47`: `sanitizeNumber` handles thousands vs decimal, `%` strip, `number` types; wildcard `c*` scan for drifted `c2/c5`; `avatar` whitelisted to `*.faceit-cdn.net` / `faceit.com` only — blocks `evil.com/track` (P1-11).
+- **Intercept rules** `interceptRules.ts:54`: `decodeURIComponent` try/catch, regex `^[^/?#\s]{1,64}$` allows unicode RU nicknames (P1-10).
+- **Lifecycle** `messageHandler.ts:32`: `chrome.tabs.onRemoved` cleanup of `streamSubscribers` — prevents leak when tabs close mid-stream (P1-05). `autoActions.ts:12` uses `offsetParent` before `getBoundingClientRect` to reduce forced reflow (D8); `domObserver.ts:20` pre-joined `CARD_SELECTORS` + `Map` for `wanted` + chat filter.
+
+### 18. Feat Sprint — `68a188e` (points 1,5,7,8 — 2,3,4 intentionally skipped to keep pacing 400ms and avoid Action Failed)
+
+- **Point 1 ADR delta** `forecastEngine.ts:210` + `types/messages.ts:42`: team ADR advantage `±8%` added to `winChance` (`diff/130`, quorum ≥3 real ADR), `factors.adrAdvantage` + narrative `ADR edge +X` — firepower beyond Elo.
+- **Point 5 Map v2** see §12 — hits/lastSeen, pruning, 7-map Active Duty.
+- **Point 7 Roles** `src/services/roleDetector.ts:1` + `tests/roleDetector.test.ts:1`: heuristics `AWP (HS<38 && KD≥1.15)`, `Entry (ADR≥85 && KD≥1.12 && HS>55)`, `Support (ADR<70 && KD<1.05)`, `Lurker/IGL/Rifler` with `last30` fallback — 6 tests.
+- **Point 8 E2E** `tests/domObserver.e2e.test.ts:1` — 6 happy-dom snapshots: roster vs chat, anchor-less fallback, short `gg` collision, UUID, server IP strict — covers `P0-02/P1-07` without Playwright install.
+- **Tests** `146→158`, `forecastEngine` map test updated `10→7` maps, `mapPool` beforeEach clears both `maps_observed_cache` + `maps_observed_v2`.
+- **Not done per user**: pacing `400→250` (`N1`), batch `chrome.storage` (`N5`), premade clique-check (`P1-04`) — left to avoid re-introducing `Action Failed` under faster parsing.
