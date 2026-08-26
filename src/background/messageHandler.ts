@@ -55,6 +55,8 @@ export class BackgroundMessageHandler {
   private initialized = false;
   private inFlightStreams = new Map<string, Promise<void>>();
   private streamSubscribers = new Map<string, Set<number>>();
+  // Monotonic per-match stream generation; superseded streams stop broadcasting.
+  private streamGenerations = new Map<string, number>();
 
   async init() {
     if (this.initialized) return;
@@ -246,6 +248,16 @@ export class BackgroundMessageHandler {
     const { matchId, forceRefresh } = payload;
     const cacheKey = `match_analysis:${matchId}`;
 
+    // Register the tab as a live-update subscriber BEFORE the cache check —
+    // a tab served from cache must still receive PLAYER_STATS_UPDATE /
+    // LOBBY_ANALYSIS_COMPLETE broadcasts for the rest of the room's life.
+    if (sender?.tab?.id) {
+      if (!this.streamSubscribers.has(matchId)) {
+        this.streamSubscribers.set(matchId, new Set());
+      }
+      this.streamSubscribers.get(matchId)!.add(sender.tab.id);
+    }
+
     if (!forceRefresh) {
       const cachedPayload = await cacheManager.get<LobbyAnalysisPayload>(cacheKey);
       if (cachedPayload && !cachedPayload.isPartial) {
@@ -258,23 +270,20 @@ export class BackgroundMessageHandler {
       return { success: false, error: `Could not fetch match details for ${matchId}` };
     }
 
-    // Register tab subscriber for live updates
-    if (sender?.tab?.id) {
-      if (!this.streamSubscribers.has(matchId)) {
-        this.streamSubscribers.set(matchId, new Set());
-      }
-      this.streamSubscribers.get(matchId)!.add(sender.tab.id);
-    }
-
     // Start or attach to background streaming
     if (!this.inFlightStreams.has(matchId) || forceRefresh) {
-      const streamPromise = this.streamLobbyData(matchId, match, forceRefresh).finally(() => {
+      // Generation token: a forceRefresh supersedes any still-running older
+      // stream. Superseded streams keep fetching through the paced queue
+      // (harmless) but must not broadcast stale snapshots over fresher ones.
+      const generation = (this.streamGenerations.get(matchId) || 0) + 1;
+      this.streamGenerations.set(matchId, generation);
+      const streamPromise = this.streamLobbyData(matchId, match, forceRefresh, generation).finally(() => {
         // Only remove our own entry: a forceRefresh may have replaced this
         // stream with a newer one while we were still running.
         if (this.inFlightStreams.get(matchId) === streamPromise) {
           this.inFlightStreams.delete(matchId);
+          this.streamSubscribers.delete(matchId);
         }
-        this.streamSubscribers.delete(matchId);
       });
       this.inFlightStreams.set(matchId, streamPromise);
     }
@@ -282,12 +291,12 @@ export class BackgroundMessageHandler {
     return { success: true, data: { match, isPartial: true } };
   }
 
-  private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean) {
+  private async streamLobbyData(matchId: string, match: any, forceRefresh: boolean, generation: number) {
     try {
-      await this.streamLobbyDataInner(matchId, match, forceRefresh);
+      await this.streamLobbyDataInner(matchId, match, forceRefresh, generation);
     } catch (err: any) {
       console.error('[f-insight:Stream] Error:', err);
-      this.broadcastToSubscribers(matchId, {
+      this.broadcastFromStream(matchId, generation, {
         type: 'LOBBY_ANALYSIS_ERROR',
         payload: { matchId, error: err?.message || 'Match analysis stream failed' },
       });
@@ -302,7 +311,17 @@ export class BackgroundMessageHandler {
     }
   }
 
-  private async streamLobbyDataInner(matchId: string, match: any, forceRefresh: boolean) {
+  /**
+   * Broadcast guarded by the stream generation: after a forceRefresh spawned
+   * a newer stream, superseded ones must stay silent — otherwise a slow old
+   * per-player snapshot would overwrite fresher data on the content side.
+   */
+  private broadcastFromStream(matchId: string, generation: number, message: any) {
+    if (this.streamGenerations.get(matchId) !== generation) return;
+    this.broadcastToSubscribers(matchId, message);
+  }
+
+  private async streamLobbyDataInner(matchId: string, match: any, forceRefresh: boolean, generation: number) {
     const cacheKey = `match_analysis:${matchId}`;
     const f1Roster = match.teams?.faction1?.roster || [];
     const f2Roster = match.teams?.faction2?.roster || [];
@@ -383,7 +402,7 @@ export class BackgroundMessageHandler {
           // 3. Red Flags Risk Score
           riskAnalysis[pId] = calculateRiskScore(pStats, steamData[pId]);
 
-          this.broadcastToSubscribers(matchId, {
+          this.broadcastFromStream(matchId, generation, {
             type: 'PLAYER_STATS_UPDATE',
             payload: { matchId, playerId: pId, stats: pStats, steam: steamData[pId], risk: riskAnalysis[pId] },
           });
@@ -477,8 +496,12 @@ export class BackgroundMessageHandler {
       isPartial: false,
     };
 
+    // Superseded by a newer stream (forceRefresh)? Stay fully silent: no
+    // cache overwrite with a stale snapshot, no broadcast.
+    if (this.streamGenerations.get(matchId) !== generation) return;
+
     await cacheManager.set(cacheKey, out, TTL.MATCH);
-    this.broadcastToSubscribers(matchId, {
+    this.broadcastFromStream(matchId, generation, {
       type: 'LOBBY_ANALYSIS_COMPLETE',
       payload: out,
     });

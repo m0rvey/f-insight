@@ -28,11 +28,13 @@ export class NetworkBridge {
         // Defense-in-depth: the hook already filtered, but never trust the
         // page world blindly — re-validate the URL here.
         if (!isInterceptableApiUrl(detail.url)) return;
-        onPayload({
-          url: detail.url,
-          status: typeof detail.status === 'number' ? detail.status : 0,
-          body: detail.body,
-        });
+        // Only successful JSON-shaped responses are data. Error bodies
+        // (4xx/5xx, e.g. rate-limit envelopes) must never reach the staging
+        // pipeline — the MAIN-world XHR path does not check status itself.
+        const status = typeof detail.status === 'number' ? detail.status : 0;
+        if (status < 200 || status >= 300) return;
+        if (!detail.body || typeof detail.body !== 'object') return;
+        onPayload({ url: detail.url, status, body: detail.body });
       } catch (_) {
         /* a malformed event must never break the page or our engine */
       }
