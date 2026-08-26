@@ -260,6 +260,8 @@ export function parsePlayerPayload(
   };
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -268,6 +270,50 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Global pacing gate for api.faceit.com.
+ *
+ * FACEIT's own page requests share the same Cloudflare rate bucket as ours
+ * (same browser IP). A lobby analysis used to fire 4 parallel requests × 10
+ * players; the resulting burst throttled the domain and FACEIT's UI surfaced
+ * it as "Action Failed" errors on almost every user action. Every request we
+ * make therefore queues here and starts at least MIN_INTERVAL apart.
+ */
+const FACEIT_MIN_REQUEST_INTERVAL_MS = 120;
+let lastFaceitRequestAt = 0;
+let faceitQueueTail: Promise<unknown> = Promise.resolve();
+
+function pacedFaceitFetch(url: string, timeoutMs: number): Promise<Response> {
+  const run = async (): Promise<Response> => {
+    const wait = lastFaceitRequestAt + FACEIT_MIN_REQUEST_INTERVAL_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastFaceitRequestAt = Date.now();
+    return fetchWithTimeout(url, { headers: { Accept: 'application/json' } }, timeoutMs);
+  };
+  const result = faceitQueueTail.then(run, run); // keep draining even if a predecessor failed
+  faceitQueueTail = result.catch(() => undefined);
+  return result;
+}
+
+/**
+ * Paced GET against api.faceit.com with a single backoff retry on throttle
+ * responses (429/503). Hammering a throttled endpoint only extends the ban,
+ * so we retreat once and then give up gracefully.
+ */
+async function pacedFaceitRequest(url: string, timeoutMs = 8000): Promise<Response> {
+  let res = await pacedFaceitFetch(url, timeoutMs);
+  if (res.status === 429 || res.status === 503 || res.status === 403) {
+    console.warn(`[f-insight:FaceitApi] HTTP ${res.status} from ${new URL(url).pathname} — backing off once`);
+    await sleep(1400 + Math.floor(Math.random() * 600));
+    try {
+      res = await pacedFaceitFetch(url, timeoutMs);
+    } catch {
+      /* keep the first response; callers treat failures as missing data */
+    }
+  }
+  return res;
 }
 
 export class FaceitApiService {
@@ -290,9 +336,7 @@ export class FaceitApiService {
 
   private async fetchMatchDetailsInternal(matchId: string): Promise<FaceitMatchDetails | null> {
     try {
-      const res = await fetchWithTimeout(`https://api.faceit.com/match/v2/match/${encodeURIComponent(matchId)}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const res = await pacedFaceitRequest(`https://api.faceit.com/match/v2/match/${encodeURIComponent(matchId)}`);
 
       if (!res.ok) {
         console.warn(`[f-insight:FaceitApi] Match ${matchId} returned HTTP ${res.status}`);
@@ -326,11 +370,13 @@ export class FaceitApiService {
   private async fetchPlayerStatsInternal(playerId: string, fallbackNickname?: string): Promise<FaceitPlayerFullStats | null> {
     try {
       const encodedId = encodeURIComponent(playerId);
-      const [userRes, statsRes, historyRes, csgoStatsRes] = await Promise.allSettled([
-        fetchWithTimeout(`https://api.faceit.com/users/v1/users/${encodedId}`, { headers: { Accept: 'application/json' } }),
-        fetchWithTimeout(`https://api.faceit.com/stats/v1/stats/users/${encodedId}/games/cs2`, { headers: { Accept: 'application/json' } }),
-        fetchWithTimeout(`https://api.faceit.com/stats/v1/stats/time/users/${encodedId}/games/cs2?size=30`, { headers: { Accept: 'application/json' } }),
-        fetchWithTimeout(`https://api.faceit.com/stats/v1/stats/users/${encodedId}/games/csgo`, { headers: { Accept: 'application/json' } }),
+      // Three paced requests per player; the legacy CS:GO call below only
+      // happens for old accounts whose CS2 payload is empty. This halves the
+      // request count of a typical 10-player lobby analysis.
+      const [userRes, statsRes, historyRes] = await Promise.allSettled([
+        pacedFaceitRequest(`https://api.faceit.com/users/v1/users/${encodedId}`),
+        pacedFaceitRequest(`https://api.faceit.com/stats/v1/stats/users/${encodedId}/games/cs2`),
+        pacedFaceitRequest(`https://api.faceit.com/stats/v1/stats/time/users/${encodedId}/games/cs2?size=30`),
       ]);
 
       let user: any = null;
@@ -345,17 +391,29 @@ export class FaceitApiService {
         stats = sJson.payload || sJson;
       }
 
-      let csgoStats: any = null;
-      if (csgoStatsRes.status === 'fulfilled' && csgoStatsRes.value.ok) {
-        const cJson = await csgoStatsRes.value.json();
-        csgoStats = cJson.payload || cJson;
-      }
-
       let history: any[] = [];
       if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
         const hJson = await historyRes.value.json();
         const rawPayload = hJson.payload || hJson;
         history = Array.isArray(rawPayload) ? rawPayload : (rawPayload?.items || rawPayload?.segments || []);
+      }
+
+      // Legacy CS:GO fallback — only when the CS2 endpoints returned nothing.
+      let csgoStats: any = null;
+      const hasCs2Data =
+        !!(stats?.lifetime && Object.keys(stats.lifetime).length > 0) ||
+        (Array.isArray(stats?.segments) && stats.segments.length > 0) ||
+        history.length > 0;
+      if (!hasCs2Data) {
+        try {
+          const legacyRes = await pacedFaceitRequest(`https://api.faceit.com/stats/v1/stats/users/${encodedId}/games/csgo`);
+          if (legacyRes.ok) {
+            const cJson = await legacyRes.json();
+            csgoStats = cJson.payload || cJson;
+          }
+        } catch {
+          /* legacy endpoint is optional */
+        }
       }
 
       return parsePlayerPayload(playerId, fallbackNickname, user, stats, csgoStats, history);
