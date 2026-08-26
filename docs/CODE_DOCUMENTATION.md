@@ -39,7 +39,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
 │  │ BackgroundMessageHandler                                                            │  │
 │  │  - FETCH_LOBBY_INSIGHT                                                              │  │
 │  │  - FETCH_PLAYER_INSIGHT                                                             │  │
-│  │  - INTERCEPTED_MATCH_PAYLOAD                                                           │
+│  │  - INTERCEPTED_MATCH_PAYLOAD (match & profile payloads)                             │  │
 │  │  - GET_SETTINGS / SAVE_SETTINGS                                                     │  │
 │  │  - GET_CACHE_STATS / CLEAR_CACHE                                                    │  │
 │  └──────────┬───────────────────────────────┬────────────────────────────┬─────────────┘  │
@@ -107,6 +107,8 @@ This document outlines the architecture, data flows, and module contracts of `f-
 - **Input Sanitization & URL Validation**: Validates `matchId` and `playerId` parameters against `/^[a-zA-Z0-9.\-_]+$/` and applies `encodeURIComponent()`. Validates `steamId64` against `/^\d{5,25}$/` — an invalid ID is classified as a fetch error ("no data"), never as a private profile.
 - **Numeric Sanitization**: All parsed stats pass through `toInt`/`toFloat` helpers that strip thousands separators (`"1,234" → 1234`) and coerce garbage (`"N/A"`) into safe fallbacks instead of `NaN`.
 - **Match History Delta Tracking**: Extracts historical Elo data across past 50 matches to compute accurate per-game Elo gains/losses ($\pm 25$).
+- **Global Request Pacing**: every own `api.faceit.com` call passes a shared tail-chained gate (`FACEIT_MIN_REQUEST_INTERVAL_MS = 400`); the lobby prefetch pool runs 2 workers × 400 ms. The single backoff retry on 429/503/403 injects a 2 s cooldown into the shared gate, so the entire queue waits out a throttle window instead of re-impaling it. This pacing exists because an unpaced 10-player analysis (~30 requests in ~4 s) used to starve FACEIT's own UI fetches and surface as "Action Failed" toasts.
+- **`buildStatsFromInterceptedParts(playerId, {user?, stats?, time?})`**: composes `FaceitPlayerFullStats` from intercepted page-traffic parts through the same `parsePlayerPayload`; returns `null` when all parts are empty; partial parts degrade via the Data Availability Contract (`statsAvailable: false`), never fabricated zeros.
 
 ### 5. `src/services/cacheManager.ts`
 - **LRU In-Memory Bound**: Caps in-memory cache at 500 entries, refreshing key positions on read/write and evicting oldest non-settings entries to prevent memory leaks during long browser sessions.
@@ -115,7 +117,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
 
 ### 5b. Data Availability Contract
 The parser distinguishes **"unknown data"** from **"zero values"**: when the FACEIT stats endpoints fail (rate-limit/network), `parsePlayerPayload` marks the result `statsAvailable: false`. Consumers (`riskScorer`, background caching) treat missing lifetime aggregates as unknown rather than as legitimate zeros, preventing fabricated defaults from driving business logic. See ADR-002 in the central knowledge hub.
-**UI application (v1.2.1):** the player flyout opens instantly on click even while stats are missing — it renders roster-derived placeholder stats (`statsAvailable: false`, nickname/Elo/level only) plus an amber "Lifetime stats unavailable" banner; full analysis swaps in automatically on the next payload refresh. Clicking a player therefore never silently does nothing.
+**UI application (v1.2.1):** the player flyout opens instantly on click even while stats are missing — it renders roster-derived placeholder stats (`statsAvailable: false`, nickname/Elo/level only) plus an amber "Partial stats" banner that distinguishes two honest states — recent matches built from page traffic vs. roster basics only; full analysis swaps in automatically on the next payload refresh. Clicking a player therefore never silently does nothing.
 
 ### 6. `src/content/shadowRoot.ts`
 - Implements `CSSStyleSheet.replaceSync()` and `root.adoptedStyleSheets = [sheet]`.
@@ -126,7 +128,7 @@ The parser distinguishes **"unknown data"** from **"zero values"**: when the FAC
 - **rAF Throttling**: Throttles DOM mutations using a 60ms buffer synchronized via `requestAnimationFrame`.
 - **Element-Identity Target Dedupe**: targets are deduped per DOM container only — the roster row, the scoreboard row and FACEIT's profile-popup card of the SAME player each keep their own badge target. Nickname/context-based dedupe was removed: FACEIT's popup uses hashed class names that defeat context heuristics, so its copy used to be silently dropped (the missing profile-popup mini table, fixed in v1.2.1).
 - **Per-Location Badge Hosts**: multiple containers of one player get stable `-locN` host-id suffixes and independent React roots, so locations never fight over a single root.
-- **Nickname-Text Fallback & UUID Links**: when primary selectors miss roster rows, anchor text is matched against roster nicknames; profile links carrying account UUIDs resolve players by id.
+- **Leaf-Text Fallback & UUID Links**: when primary selectors miss roster rows, ANY leaf element (`span`/`div`/`td`/`p`/`h5`/`h6`, `[class*="nickname"]`) whose exact trimmed text matches a roster nickname recovers the row. The previous anchors-only walk reported "0/10 player rows located" on pages whose player rows carry no `<a>` at all (scoreboard tables render clickable spans). The scan early-exits once every roster nickname is found and never matches f-insight's own injected UI; profile links carrying account UUIDs resolve players by id.
 - Seamlessly discovers FACEIT match containers and player roster items across all navigation tabs.
 
 ### 8. `src/content/autoActions.ts`
@@ -144,15 +146,24 @@ The parser distinguishes **"unknown data"** from **"zero values"**: when the FAC
 ### 11. Passive Traffic Interception — v1.2.0 primary data source
 - **`public/network-hook.js` (MAIN world, `document_start`)**: patches `window.fetch` / `XMLHttpRequest.prototype.open|send`, clones JSON responses whose URL matches `api.faceit.com` interception patterns (regex list without `$` anchors so query strings match), dispatches a namespaced CustomEvent `{url, status, body}`. Idempotent window guard; every step failure-isolated so the host SPA can never break.
 - **`src/content/netBridge.ts` (isolated world)**: re-validates event payloads via the TS-mirrored rules in `src/services/interceptRules.ts`, forwards as `INTERCEPTED_MATCH_PAYLOAD`.
-- **Background**: validates/extracts matchId → `parseMatchPayload` → caches `intercepted_match:{id}` (TTL 3 min). `getMatchDetails` checks this cache FIRST.
+- **XHR json bodies**: XHR interception reads `this.response` when `responseType === 'json'` (accessing `responseText` in that mode throws `InvalidAccessError`, which used to silently drop every json-typed XHR FACEIT made); other modes fall back to `JSON.parse(responseText)`.
+- **Background**: validates/extracts matchId → `parseMatchPayload` → caches `intercepted_match:{id}` (TTL 3 min). `getMatchDetails` checks this cache FIRST. Non-match URLs are routed to the profile pipeline below.
+- **Profile payload hydration**: URLs that classify via `classifyInterceptedProfileUrl` (`user` / `stats` / `time` kinds, full-segment playerId validation) are staged per player in `intercept_profile:{playerId}` (~9 min TTL) and recomposed through `buildStatsFromInterceptedParts` into the standard `player_stats:{id}` cache on every new part. Badges and the flyout therefore hydrate from traffic the page itself loaded — zero own requests. Content forwards profile payloads with an 800 ms debounce and triggers one lobby refresh when a full composition lands.
 - **Source ordering invariant**: intercepted page traffic is PRIMARY; f-insight's own paced `api.faceit.com` calls are FALLBACK ONLY. Own requests pass a global pacing gate (min interval, tail-chained queue) with a single backoff retry on 429/503/403. Preserve this ordering in future edits.
 
-### 12. Live Map Pool — `src/services/mapPool.ts`
-- Fetches FACEIT's own mappool config (`faceit.com/config/mappool.json`, 6 h cache) with a tolerant parser (string arrays or `{name|map_name|id}` objects under any nesting); falls back to a bundled CS2 map list.
-- Lets `buildVetoRanking` produce a full veto matrix during the ACCEPT phase, before FACEIT renders voting entities.
+### 12. Self-Observing Map Pool — `src/services/mapPool.ts`
+- **Learns instead of guessing**: the previous design probed a guessed config URL (`faceit.com/config/mappool.json`) which only ever produced HTTP 404 noise — and failures were neither cached nor rate-limited in logging. The pool now harvests map names from intercepted match payloads (`harvestMapNamesFromMatchPayload` accepts raw API shapes, parsed details, and single-map fields; `recordObservedMaps` merges them into a 24 h `maps_observed_cache`).
+- **`getActiveMapPool()` returns observed ∪ bundled** (`FALLBACK_CS2_MAPS`): observation may know only a subset of the active pool, the bundled baseline keeps the veto matrix complete. The `source` field reports `'observed' | 'fallback'`.
+- Zero network requests of its own. A room seen once makes every future room's pre-veto matrix smarter — the veto matrix works from the ACCEPT phase, before FACEIT renders voting entities. `parseMapPoolConfig` stays exported as the tolerant parser contract.
 
 ### 13. Content Resilience & Diagnostics — v1.2.1
 - **Render-stage isolation**: main widget, player badges and flyout each render inside their own try/catch — one failing stage can no longer take down the others.
 - **Global error hooks**: `window.onerror`-style listeners for `error` / `unhandledrejection` log under the `[f-insight:Content]` prefix so user-reported console output points at the real cause instead of a minified frame like `content.js:26 (Fd)`.
 - **Homepage dormancy** (`disableOnHomeScreen`, Overview tab → "Extension Status"): outside `/room/*` pages the DOM observer stops and automations gate off entirely.
 - The floating action button (QuickControls HUD) was removed in v1.2.1 together with its `enableFloatingControls` setting.
+
+### 14. Lifecycle & Cache Integrity — post-v1.2.1 hardening
+- **Per-pass root pruning**: `playerRoots` stores `{root, host}` pairs; every badge render pass unmounts and deletes entries whose host has left the DOM (profile popup closed, tab switched). Previously detached React trees stayed pinned until the room-level cleanup — a slow leak during active clicking sessions.
+- **Orphan host sweep**: `-locN` occurrence ordinals depend on scan order; after FACEIT reorders its DOM a container could keep an orphaned shadow host under the OLD id, rendering as a phantom 6 px gap while a duplicate host appeared beside it. Host creation now sweeps stale `:scope > [id^="f-insight-player-"]` siblings first.
+- **Hydration downgrade guard**: `streamLobbyData(forceRefresh)` no longer lets a throttled own fetch overwrite a good cached snapshot — e.g. one hydrated from intercepted traffic seconds earlier — with the fabricated `statsAvailable: false` object that `getPlayerStats` returns on failed endpoints. Fresh data is accepted only when it is at least as complete as the cached entry; otherwise the better entry is kept and broadcast.
+- **README navigation**: all section anchors validated against GitHub's slug algorithm (the "Architecture" anchor used to point at a section that did not exist); both READMEs gained an Architecture section, refreshed feature lists, and a no-Node quick-install path (the repo ships a prebuilt `dist/`, so `npm install && npm run build` is optional; self-build requires Node ≥ 18 for Vite 6).
