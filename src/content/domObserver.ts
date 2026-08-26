@@ -158,33 +158,44 @@ export class DomObserver {
   }
 
   /**
-   * Last-resort scan: walk every anchor on the page and match its trimmed
-   * text against known roster nicknames. Slow-ish (one querySelectorAll) but
-   * immune to class-name churn, so a FACEIT redesign degrades instead of
-   * killing all player widgets.
+   * Last-resort scan: match any LEAF element's trimmed text against known
+   * roster nicknames. FACEIT pages exist where player rows carry NO anchors
+   * at all (scoreboard tables render clickable spans) — an anchors-only walk
+   * reported "0/10 player rows located" there. Leaf-only matching keeps the
+   * scan cheap and immune to nested-label noise; early exit once every
+   * nickname is found.
    */
   private scanTargetsByNicknameText(nicknames: string[], existingTargets: PlayerElementTarget[] = []): PlayerElementTarget[] {
     const wanted = nicknames.map((raw) => ({ raw, lower: raw.toLowerCase() }));
     const targets: PlayerElementTarget[] = [];
     const seen = new Set<string>();
 
-    for (const anchor of Array.from(document.querySelectorAll('a'))) {
-      if (!(anchor instanceof HTMLElement) || !anchor.isConnected) continue;
-      // Skip anchors already covered by a primary-scan target container —
-      // otherwise the same row is reported twice under different nicknames
-      // (e.g. when the profile link segment is an account UUID).
-      if (existingTargets.some((t) => t.element.contains(anchor))) continue;
-      const text = (anchor.textContent || '').trim();
+    const candidates = document.querySelectorAll(
+      'a, span, div, p, td, th, h5, h6, [class*="nickname"], [class*="Nickname"]'
+    );
+
+    for (const el of Array.from(candidates)) {
+      if (seen.size >= wanted.length) break; // everyone found — stop walking
+      if (!(el instanceof HTMLElement) || !el.isConnected) continue;
+      // Leaf elements only: containers would match their subtree's text.
+      if (el.children.length !== 0) continue;
+      // Never match our own injected UI.
+      const elId = el.id || '';
+      if (elId.startsWith('f-insight-') || (el.closest && el.closest('[id^="f-insight-"]'))) continue;
+      // Skip nodes already covered by a primary-scan target container.
+      if (existingTargets.some((t) => t.element.contains(el))) continue;
+
+      const text = (el.textContent || '').trim();
       if (!text || text.length > 24 || text.includes('\n')) continue;
 
       const hit = wanted.find((w) => w.lower === text.toLowerCase());
       if (!hit || seen.has(hit.lower)) continue;
 
       // Climb to a stable row container so the badge has room beneath the row
-      const rowCandidate = anchor.closest(
+      const rowCandidate = el.closest(
         'li, tr, [class*="member"], [class*="Member"], [class*="player"], [class*="Player"], [class*="row"], [class*="Row"], [data-testid*="roster"]'
       );
-      const container = rowCandidate instanceof HTMLElement ? rowCandidate : anchor;
+      const container = rowCandidate instanceof HTMLElement ? rowCandidate : el.parentElement instanceof HTMLElement ? el.parentElement : el;
 
       seen.add(hit.lower);
       targets.push({ nickname: hit.raw, element: container });

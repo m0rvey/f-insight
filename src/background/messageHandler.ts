@@ -10,6 +10,7 @@ import { steamApi } from '../services/steamApi';
 import { calculateRiskScore } from '../services/riskScorer';
 import { detectPremades } from '../services/premadeDetector';
 import { classifyInterceptedProfileUrl, InterceptedProfileKind } from '../services/interceptRules';
+import { harvestMapNamesFromMatchPayload, recordObservedMaps } from '../services/mapPool';
 import {
   calculateTeamFcr,
   calculateAdvancedMatchPrediction,
@@ -128,6 +129,10 @@ export class BackgroundMessageHandler {
       const raw = (payload.body as { payload?: unknown }).payload ?? payload.body;
       const details = parseMatchPayload(raw);
       await cacheManager.set(`intercepted_match:${matchId}`, details, TTL.MATCH);
+
+      // Self-observing map pool: learn the active maps from this traffic so
+      // future rooms get a smarter pre-veto matrix. Fire-and-forget.
+      recordObservedMaps(harvestMapNamesFromMatchPayload(payload.body)).catch(() => {});
 
       return { success: true, data: { status: details.status } };
     } catch (err: any) {

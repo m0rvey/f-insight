@@ -60,6 +60,25 @@ describe('DomObserver.findPlayerElements', () => {
     expect(targets.filter((t) => t.nickname === 's1mple')).toHaveLength(2);
   });
 
+  it('recovers players rendered without anchors via the leaf-text fallback', () => {
+    // Scoreboard-style markup: clickable spans, no <a> elements at all —
+    // this is the "0/10 player rows located" regression scenario.
+    const table = document.createElement('div');
+    document.body.appendChild(table);
+    for (const nick of ['s1mple', 'device']) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      const name = document.createElement('span');
+      name.textContent = nick;
+      cell.appendChild(name);
+      row.appendChild(cell);
+      table.appendChild(row);
+    }
+
+    const targets = observer.findPlayerElements(['s1mple', 'device']);
+    expect(targets.map((t) => t.nickname).sort()).toEqual(['device', 's1mple']);
+  });
+
   it('extracts a UUID playerId when profile links carry an id instead of a nickname', () => {
     const page = document.createElement('div');
     document.body.appendChild(page);

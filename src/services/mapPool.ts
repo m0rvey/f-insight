@@ -1,20 +1,20 @@
 /**
- * Live CS2 map pool.
+ * Live CS2 map pool — self-observing.
  *
- * The veto matrix used to depend entirely on `match.voting.map.entities`,
- * which only exists once the veto phase starts. FACEIT publishes the current
- * map configuration at /config/mappool.json — polling it (cached 6h) lets the
- * matrix and predictions work from the ACCEPT phase onward. A bundled list
- * remains the last-resort fallback for offline/failed fetches.
+ * The veto matrix needs the active map list before FACEIT renders its voting
+ * entities (i.e. during ACCEPT). The previous approach probed a guessed
+ * config URL (/config/mappool.json) which only ever produced HTTP 404 noise.
+ * The pool now LEARNS instead of guessing: every intercepted match payload
+ * that contains voting/map entities feeds an observed-pool cache (24 h TTL),
+ * and getActiveMapPool() returns observed ∪ bundled. A room seen once makes
+ * every future room's pre-veto matrix smarter — zero requests of our own.
  */
 import { cacheManager } from './cacheManager';
 
-const MAPPOOL_URL = 'https://www.faceit.com/config/mappool.json';
-const MAPPOOL_CACHE_KEY = 'maps_config_cache';
-const MAPPOOL_TTL = 6 * 60 * 60 * 1000; // 6 hours
-const FETCH_TIMEOUT_MS = 5000;
+const OBSERVED_CACHE_KEY = 'maps_observed_cache';
+const OBSERVED_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-/** Mirrors forecastEngine's DEFAULT_CS2_MAPS — final offline fallback. */
+/** Mirrors forecastEngine's DEFAULT_CS2_MAPS — baseline/fallback pool. */
 export const FALLBACK_CS2_MAPS = [
   'mirage',
   'inferno',
@@ -30,14 +30,18 @@ export const FALLBACK_CS2_MAPS = [
 
 export interface MapPoolResult {
   maps: string[];
-  source: 'network' | 'fallback';
+  source: 'observed' | 'fallback';
+}
+
+function normalizeMapName(s: string): string {
+  return s.replace(/^(cs2_|csgo_|de_)/, '').toLowerCase().trim();
 }
 
 /**
- * Tolerant parser for the mappool config: accepts a plain string array as
+ * Tolerant parser for mappool-shaped configs: accepts a plain string array as
  * well as entity objects ({ name } | { map_name } | { id }) optionally nested
- * under maps/pool/entities keys. Names are normalized the same way the veto
- * engine normalizes them (cs2_/csgo_/de_ prefixes stripped, lowercased).
+ * under maps/pool/entities keys. Kept exported for future config sources and
+ * for the test-suite contract.
  */
 export function parseMapPoolConfig(raw: unknown): string[] {
   const holder = raw as { maps?: unknown; pool?: unknown; entities?: unknown } | null;
@@ -65,41 +69,58 @@ export function parseMapPoolConfig(raw: unknown): string[] {
               ? (item as { id: string }).id
               : '';
     if (!candidate) continue;
-    const clean = candidate.replace(/^(cs2_|csgo_|de_)/, '').toLowerCase().trim();
+    const clean = normalizeMapName(candidate);
     if (clean) out.add(clean);
   }
   return Array.from(out);
 }
 
-async function fetchMapPoolConfig(): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(MAPPOOL_URL, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
+/**
+ * Pulls every recognizable map name out of an intercepted match payload
+ * (raw API shape or our parsed FaceitMatchDetails — both supported).
+ */
+export function harvestMapNamesFromMatchPayload(raw: unknown): string[] {
+  const p = raw as any;
+  const names: string[] = [];
+
+  const entities =
+    p?.voting?.map?.entities ??
+    p?.payload?.voting?.map?.entities ??
+    p?.match?.voting?.map?.entities;
+  if (Array.isArray(entities)) {
+    for (const e of entities) {
+      if (typeof e?.name === 'string') names.push(e.name);
+      else if (typeof e?.id === 'string') names.push(e.id);
+    }
   }
+
+  const single = p?.map ?? p?.payload?.map ?? p?.match?.map;
+  if (typeof single === 'string') names.push(single);
+  else if (typeof single?.name === 'string') names.push(single.name);
+
+  return names.map(normalizeMapName).filter(Boolean);
 }
 
-export async function getActiveMapPool(): Promise<MapPoolResult> {
-  try {
-    const fresh = await cacheManager.get<string[]>(MAPPOOL_CACHE_KEY);
-    if (fresh && fresh.length > 0) {
-      return { maps: fresh, source: 'network' };
-    }
+/** Merges freshly observed names into the persistent observed pool. */
+export async function recordObservedMaps(names: string[]): Promise<void> {
+  const clean = names.map(normalizeMapName).filter(Boolean);
+  if (clean.length === 0) return;
+  const prev = (await cacheManager.get<string[]>(OBSERVED_CACHE_KEY)) || [];
+  const merged = Array.from(new Set([...prev, ...clean]));
+  await cacheManager.set(OBSERVED_CACHE_KEY, merged, OBSERVED_TTL);
+}
 
-    const parsed = parseMapPoolConfig(await fetchMapPoolConfig());
-    if (parsed.length > 0) {
-      await cacheManager.set(MAPPOOL_CACHE_KEY, parsed, MAPPOOL_TTL);
-      return { maps: parsed, source: 'network' };
-    }
-  } catch (err) {
-    console.warn('[f-insight:MapPool] Live map pool unavailable, using fallback:', err);
+/**
+ * Observed ∪ bundled. The union keeps the veto matrix complete even when
+ * observation has only seen a subset of the active pool so far.
+ */
+export async function getActiveMapPool(): Promise<MapPoolResult> {
+  const observed = await cacheManager.get<string[]>(OBSERVED_CACHE_KEY);
+  if (observed && observed.length > 0) {
+    return {
+      maps: Array.from(new Set([...observed, ...FALLBACK_CS2_MAPS])),
+      source: 'observed',
+    };
   }
   return { maps: FALLBACK_CS2_MAPS, source: 'fallback' };
 }
