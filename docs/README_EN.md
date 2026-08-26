@@ -33,7 +33,6 @@
         <li><b>Auto Ready-Up:</b> Automatically confirms check-in when match pops.</li>
         <li><b>Anti-AFK Protection:</b> Dismisses "Are you still here?" modal dialogs.</li>
         <li><b>1-Click Connect IP:</b> Instant copy of <code>connect &lt;ip:port&gt;</code> and steam URL launcher.</li>
-        <li><b>Projected Elo Stakes:</b> Displays exact points won/lost (e.g. <code>+21 / -29 ELO</code>).</li>
       </ul>
     </td>
     <td width="50%" valign="top">

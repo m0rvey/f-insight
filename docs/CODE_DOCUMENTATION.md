@@ -24,11 +24,10 @@ This document outlines the architecture, data flows, and module contracts of `f-
 │                                    ▼                                                      │
 │                   ┌─────────────────────────────────┐                                     │
 │                   │      React 18 Micro-Roots       │                                     │
-│                   │  - LobbySummaryBar (Stakes HUD) │                                     │
+│                   │  - LobbySummaryBar (Match HUD)  │                                     │
 │                   │  - VetoMatrix (Map Pool Delta)  │                                     │
 │                   │  - PlayerBadge (Micro-Pill HUD) │                                     │
 │                   │  - PlayerDetailFlyout (Modal)   │                                     │
-│                   │  - QuickControls (Floating HUD) │                                     │
 │                   └────────────────┬────────────────┘                                     │
 └────────────────────────────────────┼──────────────────────────────────────────────────────┘
                                      │ chrome.runtime.sendMessage()
@@ -40,6 +39,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
 │  │ BackgroundMessageHandler                                                            │  │
 │  │  - FETCH_LOBBY_INSIGHT                                                              │  │
 │  │  - FETCH_PLAYER_INSIGHT                                                             │  │
+│  │  - INTERCEPTED_MATCH_PAYLOAD                                                           │
 │  │  - GET_SETTINGS / SAVE_SETTINGS                                                     │  │
 │  │  - GET_CACHE_STATS / CLEAR_CACHE                                                    │  │
 │  └──────────┬───────────────────────────────┬────────────────────────────┬─────────────┘  │
@@ -47,7 +47,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
 │             ▼                               ▼                            ▼                │
 │  ┌────────────────────┐          ┌────────────────────┐       ┌────────────────────┐      │
 │  │   forecastEngine   │          │     riskScorer     │       │  premadeDetector   │      │
-│  │ - Projected Elo    │          │ - Red Flags (0-100)│       │ - Party Clustering │      │
+│  │ - Adv. MR12 Predict│          │ - Red Flags (0-100)│       │ - Party Clustering │      │
 │  │ - Team FCR Impact  │          │ - Steam Hours/Bans │       │ - Color Assignment │      │
 │  │ - Player Form Eval │          │ - Suspicion Ratios │       │                    │      │
 │  └────────────────────┘          └────────────────────┘       └────────────────────┘      │
@@ -75,10 +75,6 @@ This document outlines the architecture, data flows, and module contracts of `f-
 ## 📦 Core Modules
 
 ### 1. `src/services/forecastEngine.ts`
-- **`calculateProjectedElo(f1AvgElo, f2AvgElo)`**:
-  Computes expected win probabilities $E_1 = \frac{1}{1 + 10^{(\text{elo}_2 - \text{elo}_1)/400}}$ and points won/lost:
-  $$\text{Gain} = \text{round}(50 \times (1 - E_1)), \quad \text{Loss} = \text{round}(50 \times E_1)$$
-  Non-finite inputs fall back to the neutral 1000 Elo default; results are clamped to `+1..+49`.
 - **`calculateTeamFcr(team)`**:
   Computes normalized Firepower Contribution Rating — rounded shares always total exactly $100\%$ (the residual is assigned to the largest contributor):
   $$\text{Power} = \frac{\text{Elo}}{1000} \times \min(2.5,\ \max(0.4,\ \text{KD})) \times \left(1 + \frac{\text{ADR} - 75}{150}\right)$$
@@ -119,6 +115,7 @@ This document outlines the architecture, data flows, and module contracts of `f-
 
 ### 5b. Data Availability Contract
 The parser distinguishes **"unknown data"** from **"zero values"**: when the FACEIT stats endpoints fail (rate-limit/network), `parsePlayerPayload` marks the result `statsAvailable: false`. Consumers (`riskScorer`, background caching) treat missing lifetime aggregates as unknown rather than as legitimate zeros, preventing fabricated defaults from driving business logic. See ADR-002 in the central knowledge hub.
+**UI application (v1.2.1):** the player flyout opens instantly on click even while stats are missing — it renders roster-derived placeholder stats (`statsAvailable: false`, nickname/Elo/level only) plus an amber "Lifetime stats unavailable" banner; full analysis swaps in automatically on the next payload refresh. Clicking a player therefore never silently does nothing.
 
 ### 6. `src/content/shadowRoot.ts`
 - Implements `CSSStyleSheet.replaceSync()` and `root.adoptedStyleSheets = [sheet]`.
@@ -127,6 +124,9 @@ The parser distinguishes **"unknown data"** from **"zero values"**: when the FAC
 ### 7. `src/content/domObserver.ts`
 - **Mutation Noise Filtering**: Filters out self-mutations originating from f-insight's own Shadow DOM hosts (`#f-insight-*`) and ignores noisy live chat, clock timers, and toast notifications.
 - **rAF Throttling**: Throttles DOM mutations using a 60ms buffer synchronized via `requestAnimationFrame`.
+- **Element-Identity Target Dedupe**: targets are deduped per DOM container only — the roster row, the scoreboard row and FACEIT's profile-popup card of the SAME player each keep their own badge target. Nickname/context-based dedupe was removed: FACEIT's popup uses hashed class names that defeat context heuristics, so its copy used to be silently dropped (the missing profile-popup mini table, fixed in v1.2.1).
+- **Per-Location Badge Hosts**: multiple containers of one player get stable `-locN` host-id suffixes and independent React roots, so locations never fight over a single root.
+- **Nickname-Text Fallback & UUID Links**: when primary selectors miss roster rows, anchor text is matched against roster nicknames; profile links carrying account UUIDs resolve players by id.
 - Seamlessly discovers FACEIT match containers and player roster items across all navigation tabs.
 
 ### 8. `src/content/autoActions.ts`
@@ -140,3 +140,19 @@ The parser distinguishes **"unknown data"** from **"zero values"**: when the FAC
 ### 10. `scripts/build.js` Build Pipeline Optimization
 - **Custom Lucide Icon Resolver**: Rewrites barrel icon imports into direct ESM imports at build time, shrinking module transformations from **1,800+ down to ~50–90** (a 97% reduction in transformed module graph) and cutting build times in half.
 - **Rollup & Esbuild Optimizations**: Enforces `target: 'es2022'` with smallest treeshaking preset and debugger drops.
+
+### 11. Passive Traffic Interception — v1.2.0 primary data source
+- **`public/network-hook.js` (MAIN world, `document_start`)**: patches `window.fetch` / `XMLHttpRequest.prototype.open|send`, clones JSON responses whose URL matches `api.faceit.com` interception patterns (regex list without `$` anchors so query strings match), dispatches a namespaced CustomEvent `{url, status, body}`. Idempotent window guard; every step failure-isolated so the host SPA can never break.
+- **`src/content/netBridge.ts` (isolated world)**: re-validates event payloads via the TS-mirrored rules in `src/services/interceptRules.ts`, forwards as `INTERCEPTED_MATCH_PAYLOAD`.
+- **Background**: validates/extracts matchId → `parseMatchPayload` → caches `intercepted_match:{id}` (TTL 3 min). `getMatchDetails` checks this cache FIRST.
+- **Source ordering invariant**: intercepted page traffic is PRIMARY; f-insight's own paced `api.faceit.com` calls are FALLBACK ONLY. Own requests pass a global pacing gate (min interval, tail-chained queue) with a single backoff retry on 429/503/403. Preserve this ordering in future edits.
+
+### 12. Live Map Pool — `src/services/mapPool.ts`
+- Fetches FACEIT's own mappool config (`faceit.com/config/mappool.json`, 6 h cache) with a tolerant parser (string arrays or `{name|map_name|id}` objects under any nesting); falls back to a bundled CS2 map list.
+- Lets `buildVetoRanking` produce a full veto matrix during the ACCEPT phase, before FACEIT renders voting entities.
+
+### 13. Content Resilience & Diagnostics — v1.2.1
+- **Render-stage isolation**: main widget, player badges and flyout each render inside their own try/catch — one failing stage can no longer take down the others.
+- **Global error hooks**: `window.onerror`-style listeners for `error` / `unhandledrejection` log under the `[f-insight:Content]` prefix so user-reported console output points at the real cause instead of a minified frame like `content.js:26 (Fd)`.
+- **Homepage dormancy** (`disableOnHomeScreen`, Overview tab → "Extension Status"): outside `/room/*` pages the DOM observer stops and automations gate off entirely.
+- The floating action button (QuickControls HUD) was removed in v1.2.1 together with its `enableFloatingControls` setting.

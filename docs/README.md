@@ -33,7 +33,6 @@
         <li><b>Auto Ready-Up:</b> Автоматическое подтверждение готовности при нахождении матча.</li>
         <li><b>Защита от AFK:</b> Закрытие диалогов "Are you still here?".</li>
         <li><b>1-Click Connect IP:</b> Быстрое копирование IP и запуск через steam-ссылку.</li>
-        <li><b>Ставки Elo:</b> Точный расчет изменения очков (<code>+21 / -29 ELO</code>).</li>
       </ul>
     </td>
     <td width="50%" valign="top">
