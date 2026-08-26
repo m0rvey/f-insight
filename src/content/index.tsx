@@ -2,10 +2,11 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { SpaWatcher } from './spaWatcher';
 import { DomObserver } from './domObserver';
+import { RenderScheduler } from './renderScheduler';
 import { createShadowContainer } from './shadowRoot';
 import { autoActionsEngine } from './autoActions';
 import { LobbyAnalysisPayload, ExtensionMessage, MessageResponse } from '../types/messages';
-import { FaceitMatchDetails, FaceitPlayerFullStats } from '../types/faceit';
+import { FaceitMatchDetails, FaceitPlayerFullStats, FaceitPlayerRosterItem } from '../types/faceit';
 import { ExtensionSettings, DEFAULT_SETTINGS } from '../types/settings';
 import { LobbyWidget } from '../components/LobbyWidget';
 import { PlayerBadge } from '../components/PlayerBadge';
@@ -46,13 +47,19 @@ class ContentEngine {
   private playerRoots: Map<string, { root: Root; host: HTMLElement }> = new Map();
   private modalRoot: Root | null = null;
 
-  // Render Caching State
-  private lastRenderPayload: LobbyAnalysisPayload | null = null;
-  private lastRenderIsVisible: boolean | null = null;
-  private lastRenderShowVetoMatrix: boolean | null = null;
-  private lastRenderActiveFlyoutId: string | null = null;
-  private lastRenderIsLoading: boolean | null = null;
+  // Render Caching State — a single snapshot replaces the former five loose
+  // lastRender* flags (a new render input used to mean remembering to add
+  // another flag; now it means extending this object).
+  private lastRenderState: {
+    payload: LobbyAnalysisPayload | null;
+    isVisible: boolean;
+    showVetoMatrix: boolean;
+    activeFlyoutId: string | null;
+    isLoading: boolean;
+  } | null = null;
   private playerRenderedState = new Map<string, unknown>();
+  // Coalesces per-player PLAYER_STATS_UPDATE bursts into one render pass.
+  private statsRenderScheduler = new RenderScheduler();
 
   async init() {
     console.log('[f-insight:Content] Initialized content script');
@@ -166,9 +173,11 @@ class ContentEngine {
         if (msg.payload.steam) this.lobbyPayload.steamData[msg.payload.playerId] = msg.payload.steam;
         if (msg.payload.risk) this.lobbyPayload.riskAnalysis[msg.payload.playerId] = msg.payload.risk;
 
-        // Force a re-render
+        // Force a re-render — but coalesce: the background emits one message
+        // per player, so a full renderAll() per message meant up to 10
+        // redundant passes per lobby analysis. The latest state wins.
         this.lobbyPayload = { ...this.lobbyPayload };
-        this.renderAll();
+        this.statsRenderScheduler.schedule(() => this.renderAll());
       }
       if (msg.type === 'LOBBY_ANALYSIS_COMPLETE') {
         if (msg.payload?.match?.match_id !== this.currentMatchId) return;
@@ -526,12 +535,22 @@ class ContentEngine {
   }
 
   private renderAll(forceRender: boolean = false) {
-    const payloadChanged = forceRender ||
-      this.lastRenderPayload !== this.lobbyPayload ||
-      this.lastRenderIsVisible !== this.isVisible ||
-      this.lastRenderShowVetoMatrix !== this.showVetoMatrix ||
-      this.lastRenderActiveFlyoutId !== this.activePlayerFlyoutId ||
-      this.lastRenderIsLoading !== this.isLoading;
+    const nextState = {
+      payload: this.lobbyPayload,
+      isVisible: this.isVisible,
+      showVetoMatrix: this.showVetoMatrix,
+      activeFlyoutId: this.activePlayerFlyoutId,
+      isLoading: this.isLoading,
+    };
+    const prev = this.lastRenderState;
+    const payloadChanged =
+      forceRender ||
+      !prev ||
+      prev.payload !== nextState.payload ||
+      prev.isVisible !== nextState.isVisible ||
+      prev.showVetoMatrix !== nextState.showVetoMatrix ||
+      prev.activeFlyoutId !== nextState.activeFlyoutId ||
+      prev.isLoading !== nextState.isLoading;
 
     const targetsDirty = this.domObserver.consumeTargetsDirty();
 
@@ -545,11 +564,7 @@ class ContentEngine {
 
       // Compute the map veto ranking once per payload state and share it with all consumers
       this.vetoRanking = this.buildVetoRanking() || [];
-      this.lastRenderPayload = this.lobbyPayload;
-      this.lastRenderIsVisible = this.isVisible;
-      this.lastRenderShowVetoMatrix = this.showVetoMatrix;
-      this.lastRenderActiveFlyoutId = this.activePlayerFlyoutId;
-      this.lastRenderIsLoading = this.isLoading;
+      this.lastRenderState = nextState;
     }
 
     // Self-heal: if FACEIT re-renders and replaces the mount container, the widget
@@ -618,21 +633,21 @@ class ContentEngine {
     }
   }
 
-  private renderPlayerBadges() {
+  /** Merged roster of both factions in stable order (faction1 first). */
+  private getAllRoster(): FaceitPlayerRosterItem[] {
+    const teams = this.lobbyPayload?.match?.teams;
+    if (!teams) return [];
+    return [...(teams.faction1?.roster || []), ...(teams.faction2?.roster || [])];
+  }
+
+  private renderPlayerBadges(allowTextFallback: boolean = true) {
     if (!this.lobbyPayload || this.isDormant) return;
 
+    const allRoster = this.getAllRoster();
     const playerTargets = this.domObserver.findPlayerElements(
-      this.lobbyPayload.match?.teams
-        ? [
-            ...(this.lobbyPayload.match.teams.faction1?.roster || []),
-            ...(this.lobbyPayload.match.teams.faction2?.roster || []),
-          ].map((r) => r.nickname)
-        : []
+      allRoster.map((r) => r.nickname),
+      { allowTextFallback }
     );
-    const allRoster = [
-      ...(this.lobbyPayload.match.teams?.faction1?.roster || []),
-      ...(this.lobbyPayload.match.teams?.faction2?.roster || []),
-    ];
 
     if (playerTargets.length === 0 && allRoster.length > 0 && !this.warnedZeroTargets) {
       // Markup-drift diagnostics: payload knows the roster but the DOM scan
@@ -646,11 +661,16 @@ class ContentEngine {
     if (playerTargets.length === 0 && allRoster.length > 0) {
       // Roster rows often mount AFTER the first scan (payload beats render).
       // Quiet pages then fire no further relevant mutations, so rescan on a
-      // bounded timer until rows appear or attempts run out.
+      // bounded backoff timer until rows appear or attempts run out:
+      // attempts 1-3 fire every 2 s, later ones every 6 s; after 5 failed
+      // attempts the expensive document-wide text fallback is disabled and
+      // retries rely on cheap class/href selectors only.
       if (this.zeroTargetRetries < 20) {
         this.zeroTargetRetries += 1;
         if (!this.zeroTargetRetryTimer) {
           const matchIdAtSchedule = this.currentMatchId;
+          const attempt = this.zeroTargetRetries;
+          const delayMs = attempt <= 3 ? 2000 : 6000;
           this.zeroTargetRetryTimer = setTimeout(() => {
             this.zeroTargetRetryTimer = null;
             if (
@@ -659,9 +679,9 @@ class ContentEngine {
               this.lobbyPayload
             ) {
               this.domObserver.invalidateTargets();
-              this.renderPlayerBadges();
+              this.renderPlayerBadges(attempt < 5);
             }
-          }, 2000);
+          }, delayMs);
         }
       }
     } else if (playerTargets.length > 0) {
@@ -806,13 +826,8 @@ class ContentEngine {
    * change without any user action.
    */
   private buildPlaceholderStats(playerId: string): FaceitPlayerFullStats | null {
-    const match = this.lobbyPayload?.match;
-    if (!match) return null;
-    const roster = [
-      ...(match.teams?.faction1?.roster || []),
-      ...(match.teams?.faction2?.roster || []),
-    ];
-    const item = roster.find((r) => r.player_id === playerId);
+    if (!this.lobbyPayload?.match) return null;
+    const item = this.getAllRoster().find((r) => r.player_id === playerId);
     if (!item) return null;
     return {
       playerId,

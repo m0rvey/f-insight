@@ -125,7 +125,10 @@ export class DomObserver {
     return this.cachedMountPoint;
   }
 
-  findPlayerElements(rosterNicknames: string[] = []): PlayerElementTarget[] {
+  findPlayerElements(
+    rosterNicknames: string[] = [],
+    opts: { allowTextFallback?: boolean } = {}
+  ): PlayerElementTarget[] {
     // Reuse the previous scan while all cached targets are still in the DOM.
     // Roster nodes are static once rendered; only a mutation marks the cache dirty.
     if (this.cachedTargets) {
@@ -141,7 +144,11 @@ export class DomObserver {
 
     // Resilience net for FACEIT redesigns: when the payload knows the roster
     // but class/href selectors missed rows, locate nickname text directly.
-    if (rosterNicknames.length > 0) {
+    // Callers may disable it (allowTextFallback:false) — the document-wide
+    // walk is the most expensive scan and repeated failures mean the markup
+    // carries no matchable text at all.
+    const allowFallback = opts.allowTextFallback !== false;
+    if (allowFallback && rosterNicknames.length > 0) {
       const found = new Set(targets.map((t) => t.nickname.toLowerCase()));
       const missing = rosterNicknames.filter((n) => n && !found.has(n.toLowerCase()));
       if (missing.length > 0) {
