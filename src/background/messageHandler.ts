@@ -5,7 +5,7 @@ import {
 } from '../types/messages';
 import { ExtensionSettings, DEFAULT_SETTINGS } from '../types/settings';
 import { cacheManager, TTL, SETTINGS_KEY } from '../services/cacheManager';
-import { faceitApi } from '../services/faceitApi';
+import { faceitApi, parseMatchPayload } from '../services/faceitApi';
 import { steamApi } from '../services/steamApi';
 import { calculateRiskScore } from '../services/riskScorer';
 import { detectPremades } from '../services/premadeDetector';
@@ -83,6 +83,8 @@ export class BackgroundMessageHandler {
           return this.handleSaveSettings(message.payload);
         case 'FETCH_LOBBY_INSIGHT':
           return this.handleFetchLobbyInsight(message.payload, _sender);
+        case 'INTERCEPTED_MATCH_PAYLOAD':
+          return this.handleInterceptedMatchPayload(message.payload);
         case 'GET_CACHE_STATS':
           return this.handleGetCacheStats();
         case 'CLEAR_CACHE':
@@ -99,6 +101,33 @@ export class BackgroundMessageHandler {
   private async handleGetSettings(): Promise<MessageResponse> {
     const settings = await this.loadSettings();
     return { success: true, data: settings };
+  }
+
+  /**
+   * Consumes a match payload intercepted from FACEIT's own page traffic.
+   * Parsed details are cached under `intercepted_match:*` — getMatchDetails
+   * serves that cache first, so the regular analysis flow runs without
+   * spending any of our api.faceit.com request budget.
+   */
+  private async handleInterceptedMatchPayload(payload: any): Promise<MessageResponse> {
+    try {
+      const matchId = typeof payload?.matchId === 'string' ? payload.matchId : '';
+      if (!matchId || !/^[a-zA-Z0-9\-_]+$/.test(matchId)) {
+        return { success: false, error: 'Invalid intercepted matchId' };
+      }
+      if (!payload?.body || typeof payload.body !== 'object') {
+        return { success: false, error: 'Invalid intercepted match body' };
+      }
+
+      const raw = (payload.body as { payload?: unknown }).payload ?? payload.body;
+      const details = parseMatchPayload(raw);
+      await cacheManager.set(`intercepted_match:${matchId}`, details, TTL.MATCH);
+
+      return { success: true, data: { status: details.status } };
+    } catch (err: any) {
+      console.warn('[f-insight:Background] Intercepted match payload rejected:', err?.message || err);
+      return { success: false, error: err?.message || 'Intercepted payload parse failed' };
+    }
   }
 
   private async handleSaveSettings(payload: any): Promise<MessageResponse> {

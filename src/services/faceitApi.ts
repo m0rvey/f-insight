@@ -6,6 +6,7 @@ import {
   PlayerRecentMatch,
 } from '../types/faceit';
 import { evaluatePlayerForm } from './forecastEngine';
+import { cacheManager } from './cacheManager';
 
 const pick = (obj: Record<string, any>, ...keys: string[]): string | undefined => {
   for (const k of keys) {
@@ -322,6 +323,15 @@ export class FaceitApiService {
 
   async getMatchDetails(matchId: string): Promise<FaceitMatchDetails | null> {
     if (!matchId || !/^[a-zA-Z0-9.\-_]+$/.test(matchId)) return null;
+
+    // Hybrid data path: when FACEIT's own SPA already loaded this match
+    // (intercepted by the MAIN-world hook and cached by the background),
+    // serve that instead of spending any of our request budget.
+    const intercepted = await cacheManager.get<FaceitMatchDetails>(
+      `intercepted_match:${matchId}`
+    );
+    if (intercepted) return intercepted;
+
     if (this.inFlightMatch.has(matchId)) {
       return this.inFlightMatch.get(matchId)!;
     }

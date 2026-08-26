@@ -85,6 +85,12 @@ export type ExtensionMessage =
   | { type: 'GET_SETTINGS' }
   | { type: 'SAVE_SETTINGS'; payload: Partial<ExtensionSettings> }
   | { type: 'FETCH_LOBBY_INSIGHT'; payload: { matchId: string; forceRefresh?: boolean } }
+  /**
+   * Match payload intercepted from FACEIT's own page traffic by the MAIN-world
+   * network hook. The background parses and caches it so the next
+   * FETCH_LOBBY_INSIGHT for this match resolves without any request of ours.
+   */
+  | { type: 'INTERCEPTED_MATCH_PAYLOAD'; payload: { matchId: string; body: unknown; url?: string } }
   | { type: 'GET_CACHE_STATS' }
   | { type: 'CLEAR_CACHE' };
 

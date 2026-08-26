@@ -13,17 +13,23 @@ import { PlayerDetailFlyout } from '../components/PlayerDetailFlyout';
 import { QuickControls } from '../components/QuickControls';
 import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { detectCurrentPlayer, DetectedCurrentUser } from '../services/currentUserDetector';
+import { getActiveMapPool } from '../services/mapPool';
+import { extractMatchIdFromInterceptedUrl } from '../services/interceptRules';
+import { NetworkBridge, InterceptedNetPayload } from './netBridge';
 import '../styles/tailwind.css';
 
 class ContentEngine {
   private spaWatcher = new SpaWatcher();
   private domObserver = new DomObserver();
+  private netBridge = new NetworkBridge();
   private currentMatchId: string | null = null;
   private lobbyPayload: LobbyAnalysisPayload | null = null;
   private currentUser: DetectedCurrentUser | null = null;
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private isDormant = false;
   private warnedZeroTargets = false;
+  private lastInterceptHandledAt = 0;
+  private liveMapPool: string[] | null = null;
   private isLoading: boolean = false;
   private isVisible: boolean = true;
   private showVetoMatrix: boolean = true;
@@ -95,6 +101,17 @@ class ContentEngine {
 
     try {
       this.domObserver.startObserving(() => this.handleDomUpdate());
+    } catch (err) {
+      console.warn('[f-insight:Content] domObserver registration failed:', err);
+    }
+
+    // Passive data path: FACEIT's own SPA responses are intercepted by the
+    // MAIN-world hook and re-dispatched here (see handleInterceptedTraffic).
+    try {
+      this.netBridge.start((p) => this.handleInterceptedTraffic(p));
+    } catch (err) {
+      console.warn('[f-insight:Content] network bridge registration failed:', err);
+    }
 
     // Engine must stay quiet while the user interacts — otherwise our clicks
     // collide with the user's own clicks and FACEIT shows "Action Failed".
@@ -134,7 +151,8 @@ class ContentEngine {
         this.renderAll();
       }
     });
-    chrome.runtime.onMessage.addListener((msg) => {
+    try {
+      chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'PLAYER_STATS_UPDATE') {
         if (msg.payload?.matchId !== this.currentMatchId) return;
         if (!this.lobbyPayload || !this.lobbyPayload.isPartial) return;
@@ -181,8 +199,7 @@ class ContentEngine {
     }
 
     try {
-      this.renderFloatingControls();
-    } catch (err) {
+      this.renderFloatingControls();    } catch (err) {
       console.warn('[f-insight:Content] floating controls render failed:', err);
     }
   }
@@ -210,7 +227,10 @@ class ContentEngine {
     return calculateMapVetoRanking({
       f1Players,
       f2Players,
-      availableMaps: (payload.match.voting?.map?.entities || []).map((e: any) => e.name || e.guid || ''),
+      availableMaps: (payload.match.voting?.map?.entities || []).map((e: any) => e.name || e.guid || '')
+        .length > 0
+        ? (payload.match.voting?.map?.entities || []).map((e: any) => e.name || e.guid || '')
+        : (this.liveMapPool || []),
       userFaction: this.currentUser?.faction,
     });
   }
@@ -291,6 +311,18 @@ class ContentEngine {
   private async fetchLobbyData(matchId: string, forceRefresh = false) {
     if (matchId !== this.currentMatchId) return;
 
+    // Live map pool (6h cache): lets the veto matrix work from the ACCEPT
+    // phase, before FACEIT's own voting entities exist. Fire-and-forget — the
+    // next render picks it up.
+    if (!this.liveMapPool) {
+      getActiveMapPool()
+        .then((res) => {
+          this.liveMapPool = res.maps;
+          this.renderAll();
+        })
+        .catch(() => {});
+    }
+
     // Drop any payload from a previous match so stale data never renders in a new room
     if (this.lobbyPayload?.match?.match_id !== matchId) {
       this.lobbyPayload = null;
@@ -369,6 +401,39 @@ class ContentEngine {
         }
       }, this.retryCount === 1 ? 5000 : 15000);
     }
+  }
+
+  /**
+   * Passive data path: the MAIN-world hook observed a response FACEIT's own
+   * page fetched. Match payloads are parsed + cached by the background so the
+   * analysis flow re-runs on warm data without spending our request budget.
+   */
+  private handleInterceptedTraffic(p: InterceptedNetPayload) {
+    if (this.isDormant) return;
+    const matchId = extractMatchIdFromInterceptedUrl(p.url);
+    if (!matchId || matchId !== this.currentMatchId) return;
+
+    // Debounce bursts: SPA transitions can fire several match fetches quickly
+    const now = Date.now();
+    if (now - this.lastInterceptHandledAt < 1500) return;
+    this.lastInterceptHandledAt = now;
+
+    chrome.runtime
+      .sendMessage({
+        type: 'INTERCEPTED_MATCH_PAYLOAD',
+        payload: { matchId, body: p.body, url: p.url },
+      })
+      .then((res: any) => {
+        if (!res?.success || this.isLoading || !this.currentMatchId) return;
+        // Force a re-analysis only when a real phase transition was observed
+        // (e.g. VOTING -> READY); otherwise plain fetch hits warm caches.
+        const statusChanged =
+          typeof res.data?.status === 'string' &&
+          !!this.lobbyPayload?.match &&
+          this.lobbyPayload.match.status !== res.data.status;
+        this.fetchLobbyData(this.currentMatchId, statusChanged).catch(() => {});
+      })
+      .catch(() => {});
   }
 
   /** DOM-observer callback; also re-armed after dormancy wake-ups. */
