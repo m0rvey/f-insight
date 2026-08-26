@@ -18,6 +18,20 @@ import { extractMatchIdFromInterceptedUrl } from '../services/interceptRules';
 import { NetworkBridge, InterceptedNetPayload } from './netBridge';
 import '../styles/tailwind.css';
 
+// Recovery-loop bounds for "roster known but 0 rows found" scans (see
+// renderPlayerBadges). Attempts 1-3 fire every 2 s, later ones every 6 s;
+// the expensive document-wide text fallback is disabled past attempt 5.
+const ZERO_TARGET_MAX_ATTEMPTS = 20;
+const ZERO_TARGET_WARN_AFTER_ATTEMPTS = 3;
+
+// Benign browser layout-loop noise. Any ResizeObserver whose write lands one
+// frame late produces it — usually FACEIT's own charts, never a f-insight
+// failure — and logging it under our prefix misattributed site errors.
+const BENIGN_ERROR_PATTERNS = [
+  'ResizeObserver loop completed with undelivered notifications',
+  'ResizeObserver loop limit exceeded',
+];
+
 class ContentEngine {
   private spaWatcher = new SpaWatcher();
   private domObserver = new DomObserver();
@@ -215,8 +229,10 @@ class ContentEngine {
     // a greppable prefix so user-reported console logs point at the real cause.
     try {
       window.addEventListener('error', (event) => {
+        const message = typeof event.message === 'string' ? event.message : '';
+        if (BENIGN_ERROR_PATTERNS.some((pattern) => message.includes(pattern))) return;
         console.warn(
-          '[f-insight:Content] Uncaught error:',
+          '[f-insight:Content] Page error observed:',
           event.message,
           `${event.filename}:${event.lineno}:${event.colno}`
         );
@@ -689,40 +705,48 @@ class ContentEngine {
       { allowTextFallback }
     );
 
-    if (playerTargets.length === 0 && allRoster.length > 0 && !this.warnedZeroTargets) {
-      // Markup-drift diagnostics: payload knows the roster but the DOM scan
-      // found nothing — log once so the console explains missing badges.
-      this.warnedZeroTargets = true;
-      console.warn(
-        `[f-insight:Content] 0/${allRoster.length} player rows located in DOM — FACEIT markup may have changed; text-based fallback also failed`
-      );
-    }
-
     if (playerTargets.length === 0 && allRoster.length > 0) {
-      // Roster rows often mount AFTER the first scan (payload beats render).
-      // Quiet pages then fire no further relevant mutations, so rescan on a
+      // Roster rows often mount AFTER the first scan (payload beats render):
+      // the first couple of empty scans are a normal race, so the scary
+      // "0/N rows" warning only fires once the failure looks structural.
+      if (
+        !this.warnedZeroTargets &&
+        this.zeroTargetRetries >= ZERO_TARGET_WARN_AFTER_ATTEMPTS
+      ) {
+        this.warnedZeroTargets = true;
+        console.warn(
+          `[f-insight:Content] 0/${allRoster.length} player rows located in DOM after ${this.zeroTargetRetries} scan attempts — FACEIT markup may have changed; text-based fallback also failed`
+        );
+      }
+
+      // Quiet pages fire no further relevant mutations, so rescan on a
       // bounded backoff timer until rows appear or attempts run out:
       // attempts 1-3 fire every 2 s, later ones every 6 s; after 5 failed
       // attempts the expensive document-wide text fallback is disabled and
       // retries rely on cheap class/href selectors only.
-      if (this.zeroTargetRetries < 20) {
+      // NOTE: the attempt counter advances ONLY when a new retry is actually
+      // scheduled — renderAll() ticks on every relevant mutation, and an
+      // eager increment used to burn all 20 attempts within seconds while a
+      // single retry was still pending.
+      if (
+        this.zeroTargetRetries < ZERO_TARGET_MAX_ATTEMPTS &&
+        !this.zeroTargetRetryTimer
+      ) {
         this.zeroTargetRetries += 1;
-        if (!this.zeroTargetRetryTimer) {
-          const matchIdAtSchedule = this.currentMatchId;
-          const attempt = this.zeroTargetRetries;
-          const delayMs = attempt <= 3 ? 2000 : 6000;
-          this.zeroTargetRetryTimer = setTimeout(() => {
-            this.zeroTargetRetryTimer = null;
-            if (
-              this.currentMatchId === matchIdAtSchedule &&
-              !this.isDormant &&
-              this.lobbyPayload
-            ) {
-              this.domObserver.invalidateTargets();
-              this.renderPlayerBadges(attempt < 5);
-            }
-          }, delayMs);
-        }
+        const matchIdAtSchedule = this.currentMatchId;
+        const attempt = this.zeroTargetRetries;
+        const delayMs = attempt <= 3 ? 2000 : 6000;
+        this.zeroTargetRetryTimer = setTimeout(() => {
+          this.zeroTargetRetryTimer = null;
+          if (
+            this.currentMatchId === matchIdAtSchedule &&
+            !this.isDormant &&
+            this.lobbyPayload
+          ) {
+            this.domObserver.invalidateTargets();
+            this.renderPlayerBadges(attempt < 5);
+          }
+        }, delayMs);
       }
     } else if (playerTargets.length > 0) {
       // Rows found — stop the recovery loop.

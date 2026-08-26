@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DomObserver } from '../src/content/domObserver';
 
 function addRosterRow(nick: string, parent: HTMLElement): HTMLElement {
@@ -161,5 +161,106 @@ describe('DomObserver.findPlayerElements', () => {
     for (const t of targets) {
       expect(t.element.tagName).toBe('LI');
     }
+  });
+});
+
+describe('DomObserver fallback log noise + selector learning', () => {
+  let observer: DomObserver;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let debugSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    observer = new DomObserver();
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const recoveryWarns = () =>
+    warnSpy.mock.calls.filter(([m]) => String(m).includes('text fallback recovered'));
+  const recoveryDebugs = () =>
+    debugSpy.mock.calls.filter(([m]) => String(m).includes('text fallback recovered'));
+  const learnLogs = () =>
+    debugSpy.mock.calls.filter(([m]) => String(m).includes('Learned row selector'));
+
+  /** Anchorless roster rows — primary selectors find nothing. */
+  function addAnchorlessRows(nicks: string[], rowClass?: string) {
+    const list = document.createElement('ul');
+    for (const nick of nicks) {
+      const li = document.createElement('li');
+      if (rowClass) li.className = rowClass;
+      const span = document.createElement('span');
+      span.textContent = nick;
+      li.appendChild(span);
+      list.appendChild(li);
+    }
+    document.body.appendChild(list);
+    return list;
+  }
+
+  it('warns about the redesign fallback once, then downgrades repeats to debug', () => {
+    addAnchorlessRows(['s1mple', 'device']);
+
+    for (let i = 0; i < 3; i++) {
+      observer.invalidateTargets();
+      const targets = observer.findPlayerElements(['s1mple', 'device']);
+      expect(targets.map((t) => t.nickname).sort()).toEqual(['device', 's1mple']);
+    }
+
+    expect(recoveryWarns()).toHaveLength(1);
+    expect(recoveryDebugs().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('learns a reusable row selector after a full-roster fallback recovery', () => {
+    addAnchorlessRows(
+      ['p1layer', 'p2layer', 'p3layer', 'p4layer', 'p5layer'],
+      'xyz-row'
+    );
+
+    const first = observer.findPlayerElements([
+      'p1layer', 'p2layer', 'p3layer', 'p4layer', 'p5layer',
+    ]);
+    expect(first).toHaveLength(5);
+    // The learned-signature adoption must have been logged…
+    expect(learnLogs()).toHaveLength(1);
+
+    // …and the NEXT scan resolves rows via the learned selector alone:
+    // no further recovery pass, identical results.
+    observer.invalidateTargets();
+    const second = observer.findPlayerElements([
+      'p1layer', 'p2layer', 'p3layer', 'p4layer', 'p5layer',
+    ]);
+    expect(second.map((t) => t.nickname).sort()).toEqual(
+      ['p1layer', 'p2layer', 'p3layer', 'p4layer', 'p5layer'].sort()
+    );
+    // Only the very first scan ever warned.
+    expect(recoveryWarns()).toHaveLength(1);
+  });
+
+  it('does NOT adopt a generic signature whose page matches are mostly non-roster', () => {
+    addAnchorlessRows(
+      ['r1player', 'r2player', 'r3player', 'r4player', 'r5player'],
+      'shared-row'
+    );
+    // Noise: same class on containers that never resolve to a roster nickname.
+    for (let i = 0; i < 8; i++) {
+      const noise = document.createElement('li');
+      noise.className = 'shared-row';
+      const span = document.createElement('span');
+      span.textContent = `unrelated filler text number ${i} that is long`;
+      noise.appendChild(span);
+      document.body.appendChild(noise);
+    }
+
+    const targets = observer.findPlayerElements([
+      'r1player', 'r2player', 'r3player', 'r4player', 'r5player',
+    ]);
+    expect(targets).toHaveLength(5);
+
+    expect(learnLogs()).toHaveLength(0); // signature rejected — too noisy
   });
 });

@@ -5,6 +5,11 @@ export interface PlayerElementTarget {
   playerId?: string;
 }
 
+/** Escape a class token for safe use inside a CSS selector. */
+function escapeCssIdent(token: string): string {
+  return token.replace(/([^a-zA-Z0-9_\u00A0-\uFFFF-])/g, '\\$1');
+}
+
 export class DomObserver {
   private observer: MutationObserver | null = null;
   private timeoutId: number | null = null;
@@ -15,6 +20,16 @@ export class DomObserver {
   private cachedTargets: PlayerElementTarget[] | null = null;
   private cachedMountPoint: HTMLElement | null = null;
   private targetsDirty = false;
+
+  // Self-healing primary scan. When the text fallback recovers a full roster,
+  // stable row-container signatures (tag + classes) are learned from the
+  // recovered rows and run as ordinary selectors afterwards, so later scans
+  // no longer pay for the document-wide nickname walk.
+  private learnedRowSelectors: string[] = [];
+
+  // Log-noise control for the fallback-recovery warning: FACEIT mutates its
+  // DOM constantly, so an unchanged recovery used to re-warn on every rescan.
+  private lastFallbackLogKey: string | null = null;
 
   startObserving(onUpdate: () => void) {
     this.stopObserving();
@@ -154,7 +169,19 @@ export class DomObserver {
       if (missing.length > 0) {
         const recovered = this.scanTargetsByNicknameText(missing, targets);
         if (recovered.length > 0) {
-          console.warn(`[f-insight:DomObserver] Primary selectors missed ${missing.length} roster rows — text fallback recovered ${recovered.length}`);
+          // Warn once per distinct recovery signature; identical repeats
+          // (same miss/recover counts on later rescans) downgrade to debug.
+          const logKey = `${missing.length}:${recovered.length}`;
+          const message = `[f-insight:DomObserver] Primary selectors missed ${missing.length} roster rows — text fallback recovered ${recovered.length}`;
+          if (this.lastFallbackLogKey !== logKey) {
+            this.lastFallbackLogKey = logKey;
+            console.warn(message);
+          } else {
+            console.debug(message);
+          }
+          if (recovered.length >= Math.min(5, missing.length)) {
+            this.learnRowSelectors(recovered, rosterNicknames);
+          }
         }
         for (const t of recovered) {
           if (!found.has(t.nickname.toLowerCase())) {
@@ -260,6 +287,9 @@ export class DomObserver {
     ];
 
     const selectors = [
+      // Learned signatures go first: they were validated against the roster,
+      // so they resolve rows the shipped class list no longer matches.
+      ...this.learnedRowSelectors,
       ...cardSelectors,
       'a[href*="/players/"]',
       'a[href*="/players-modal/"]',
@@ -316,6 +346,87 @@ export class DomObserver {
     });
 
     return targets;
+  }
+
+  /**
+   * Learn stable row-container signatures from rows the text fallback had to
+   * recover. A signature is adopted only if it explains most recovered rows
+   * AND its page matches overwhelmingly resolve to roster nicknames — generic
+   * containers must never flood unrelated badge mounts.
+   */
+  private learnRowSelectors(recovered: PlayerElementTarget[], rosterNicknames: string[]): void {
+    const rosterSet = new Set(rosterNicknames.map((n) => n.toLowerCase()).filter(Boolean));
+    if (rosterSet.size === 0) return;
+
+    const signatureCounts = new Map<string, number>();
+    for (const t of recovered) {
+      const sig = this.buildSelectorSignature(t.element);
+      if (sig) signatureCounts.set(sig, (signatureCounts.get(sig) || 0) + 1);
+    }
+
+    for (const [sig, count] of signatureCounts) {
+      if (this.learnedRowSelectors.includes(sig)) continue;
+      // Signature must explain at least half of the recovered batch…
+      if (count < Math.max(2, Math.ceil(recovered.length / 2))) continue;
+      // …and its live page matches must mostly be roster rows.
+      let total = 0;
+      let hits = 0;
+      try {
+        for (const el of document.querySelectorAll(sig)) {
+          if (!(el instanceof HTMLElement) || !el.isConnected) continue;
+          total += 1;
+          if (this.elementResolvesToRoster(el, rosterSet)) hits += 1;
+        }
+      } catch {
+        continue; // malformed signature — never adopt
+      }
+      if (total >= 4 && hits / total >= 0.6 && !this.learnedRowSelectors.includes(sig)) {
+        this.learnedRowSelectors.push(sig);
+        if (this.learnedRowSelectors.length > 4) this.learnedRowSelectors.shift();
+        console.debug(
+          `[f-insight:DomObserver] Learned row selector "${sig}" (${hits}/${total} roster hits)`
+        );
+      }
+    }
+  }
+
+  /** tag.classA.classB fingerprint (≤3 classes, CSS-escaped) of a row container. */
+  private buildSelectorSignature(el: HTMLElement): string | null {
+    const tag = el.tagName.toLowerCase();
+    if (!tag || tag === 'body' || tag === 'html') return null;
+    const classes = (typeof el.className === 'string' ? el.className : '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 3);
+    if (classes.length === 0) return null;
+    const escaped = classes.map(escapeCssIdent).join('.');
+    if (!escaped) return null;
+    return `${tag}.${escaped}`;
+  }
+
+  /**
+   * True when the element carries a roster nickname as a /players/ href
+   * segment or as exact leaf/direct text — the same signals the text
+   * fallback trusts, reused to validate learned selectors.
+   */
+  private elementResolvesToRoster(el: HTMLElement, rosterSet: Set<string>): boolean {
+    const href =
+      el.getAttribute('href') || el.querySelector('a')?.getAttribute('href') || '';
+    const m = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([a-zA-Z0-9_.\-]+)/i);
+    if (m?.[1] && rosterSet.has(m[1].toLowerCase())) return true;
+
+    const leaves =
+      el.children.length === 0
+        ? [el]
+        : Array.from(el.querySelectorAll('a, span, div, p, td, th, h5, h6'));
+    for (const leaf of leaves) {
+      if (!(leaf instanceof HTMLElement) || leaf.children.length > 0) continue;
+      const text = (leaf.textContent || '').trim();
+      if (text && text.length <= 24 && !text.includes('\n') && rosterSet.has(text.toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   findServerIpFromDom(): string | null {

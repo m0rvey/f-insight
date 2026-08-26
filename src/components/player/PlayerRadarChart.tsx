@@ -32,11 +32,26 @@ export const PlayerRadarChart = React.memo<PlayerRadarChartProps>(({ stats }) =>
   React.useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setSize(Math.max(180, Math.min(240, el.clientWidth)));
-    update();
-    const ro = new ResizeObserver(update);
+    // Defer the state write one frame past the observer notification:
+    // calling setState synchronously inside a ResizeObserver callback can
+    // relayout the element before paint, which re-triggers the observer and
+    // surfaces as "ResizeObserver loop completed with undelivered
+    // notifications". React also bails out on identical sizes, so repeated
+    // frames without real resizes cost nothing.
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        setSize(Math.max(180, Math.min(240, el.clientWidth)));
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
   }, []);
 
   const center = size / 2;
