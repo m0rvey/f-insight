@@ -38,6 +38,12 @@ export interface AdvancedMatchPrediction {
       f2HighRiskCount: number;
       impactPercent: number;
     };
+    adrAdvantage?: {
+      leader: 'faction1' | 'faction2' | 'balanced';
+      f1AvgAdr: number;
+      f2AvgAdr: number;
+      delta: number;
+    };
   };
   starMatchup?: {
     f1Star: { nickname: string; fcr: number; kd: number; elo: number };

@@ -65,6 +65,7 @@ describe('getActiveMapPool (self-observing)', () => {
   beforeEach(async () => {
     document.body.innerHTML = '';
     await cacheManager.set(OBSERVED_KEY, [], 1);
+    await cacheManager.set('maps_observed_v2', [], 1);
   });
 
   it('falls back to the bundled pool when nothing has been observed yet', async () => {

@@ -198,6 +198,28 @@ export function calculateAdvancedMatchPrediction(params: {
     };
   }
 
+  // 2b. ADR Advantage Factor (team firepower beyond Elo)
+  let adrDelta = 0;
+  let adrAdvantageData: AdvancedMatchPrediction['factors']['adrAdvantage'] = undefined;
+  const f1Adrs = f1Players
+    .map((p) => p.last30Adr ?? p.overallAdr)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 5 && v <= 200);
+  const f2Adrs = f2Players
+    .map((p) => p.last30Adr ?? p.overallAdr)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 5 && v <= 200);
+  if (f1Adrs.length >= 3 && f2Adrs.length >= 3) {
+    const f1AvgAdr = Math.round(f1Adrs.reduce((a, b) => a + b, 0) / f1Adrs.length);
+    const f2AvgAdr = Math.round(f2Adrs.reduce((a, b) => a + b, 0) / f2Adrs.length);
+    const diff = f1AvgAdr - f2AvgAdr;
+    adrDelta = Math.max(-0.08, Math.min(0.08, diff / 130));
+    adrAdvantageData = {
+      leader: diff >= 5 ? 'faction1' : diff <= -5 ? 'faction2' : 'balanced',
+      f1AvgAdr,
+      f2AvgAdr,
+      delta: diff,
+    };
+  }
+
   // 3. Momentum & Player Form Factor
   const f1HotCount = f1Players.filter((p) => p.formStatus === 'HOT').length;
   const f1ColdCount = f1Players.filter((p) => p.formStatus === 'COLD').length;
@@ -237,7 +259,7 @@ export function calculateAdvancedMatchPrediction(params: {
 
   // 5. Final Adjusted Win Chances
   const riskDelta = Math.max(-0.06, Math.min(0.06, (f1HighRisk - f2HighRisk) * 0.02));
-  const rawWinF1 = baseWinProbF1 + mapDelta + momentumDelta + premadeDelta + riskDelta;
+  const rawWinF1 = baseWinProbF1 + mapDelta + adrDelta + momentumDelta + premadeDelta + riskDelta;
   const clampedWinF1 = Math.max(0.06, Math.min(0.94, rawWinF1));
   const winChanceF1 = Math.round(clampedWinF1 * 100);
   const winChanceF2 = 100 - winChanceF1;
@@ -280,6 +302,14 @@ export function calculateAdvancedMatchPrediction(params: {
       mapAdvantageData.leader === 'faction1'
         ? `Team 1 dominates ${mapAdvantageData.mapName} (+${mapAdvantageData.deltaWinRate}% WR)`
         : `Team 2 dominates ${mapAdvantageData.mapName} (+${mapAdvantageData.deltaWinRate}% WR)`
+    );
+  }
+
+  if (adrAdvantageData && Math.abs(adrAdvantageData.delta) >= 8) {
+    narratives.push(
+      adrAdvantageData.leader === 'faction1'
+        ? `Team 1 ADR edge +${adrAdvantageData.delta} (firepower)`
+        : `Team 2 ADR edge +${Math.abs(adrAdvantageData.delta)} (firepower)`
     );
   }
 
@@ -361,6 +391,7 @@ export function calculateAdvancedMatchPrediction(params: {
         f2HighRiskCount: f2HighRisk,
         impactPercent: Math.round(riskDelta * 100),
       },
+      adrAdvantage: adrAdvantageData,
     },
     starMatchup: f1Star && f2Star ? { f1Star, f2Star } : undefined,
   };

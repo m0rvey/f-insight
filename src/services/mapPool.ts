@@ -14,6 +14,10 @@ import { CACHE_CONFIG, MAP_POOL_CONFIG } from '../constants/config';
 
 const OBSERVED_CACHE_KEY = 'maps_observed_cache';
 const OBSERVED_TTL = CACHE_CONFIG.TTL.OBSERVED_MAPS_MS;
+const OBSERVED_V2_KEY = 'maps_observed_v2';
+const OBSERVED_V2_TTL = CACHE_CONFIG.TTL.OBSERVED_MAPS_MS * 7; // 7 days
+
+type ObservedEntry = { name: string; hits: number; lastSeen: number };
 
 /** Mirrors forecastEngine's DEFAULT_CS2_MAPS — baseline/fallback pool. */
 export const FALLBACK_CS2_MAPS = [...MAP_POOL_CONFIG.FALLBACK_MAPS] as string[];
@@ -108,20 +112,52 @@ export function harvestMapNamesFromMatchPayload(raw: unknown): string[] {
   return Array.from(new Set(names));
 }
 
-/** Merges freshly observed names into the persistent observed pool. */
+/** Merges freshly observed names into the persistent observed pool (v2 with hits/lastSeen). */
 export async function recordObservedMaps(names: string[]): Promise<void> {
   const clean = names.map(normalizeMapName).filter(Boolean);
   if (clean.length === 0) return;
-  const prev = (await cacheManager.get<string[]>(OBSERVED_CACHE_KEY)) || [];
-  const merged = Array.from(new Set([...prev, ...clean]));
-  await cacheManager.set(OBSERVED_CACHE_KEY, merged, OBSERVED_TTL);
+  // v2 entry
+  const prevV2 = (await cacheManager.get<ObservedEntry[]>(OBSERVED_V2_KEY)) || [];
+  const map = new Map<string, ObservedEntry>(prevV2.map((e) => [e.name, e]));
+  const now = Date.now();
+  for (const n of clean) {
+    const cur = map.get(n);
+    map.set(n, { name: n, hits: (cur?.hits || 0) + 1, lastSeen: now });
+  }
+  // Prune: map not seen for 7 days and hits<3 → likely removed from pool (e.g. cache/vertigo)
+  for (const [k, e] of [...map.entries()]) {
+    if (now - e.lastSeen > 7 * 86400000 && e.hits < 3) map.delete(k);
+  }
+  // Keep most recent 20
+  const mergedV2 = [...map.values()].sort((a, b) => b.lastSeen - a.lastSeen).slice(0, 20);
+  await cacheManager.set(OBSERVED_V2_KEY, mergedV2, OBSERVED_V2_TTL);
+  // Also maintain legacy key for backward compat (24h string array) — migration path
+  const prevLegacy = (await cacheManager.get<string[]>(OBSERVED_CACHE_KEY)) || [];
+  const mergedLegacy = Array.from(new Set([...prevLegacy, ...clean]));
+  await cacheManager.set(OBSERVED_CACHE_KEY, mergedLegacy.slice(-20), OBSERVED_TTL);
 }
 
 /**
- * Observed ∪ bundled. The union keeps the veto matrix complete even when
- * observation has only seen a subset of the active pool so far.
+ * Observed ∪ bundled with pruning. Active maps are those seen within 14 days
+ * sorted by hits; fallback maps are included only if observed or pool still small.
  */
 export async function getActiveMapPool(): Promise<MapPoolResult> {
+  const observedV2 = await cacheManager.get<ObservedEntry[]>(OBSERVED_V2_KEY);
+  if (observedV2 && observedV2.length > 0) {
+    const now = Date.now();
+    const active = observedV2
+      .filter((e) => now - e.lastSeen < 14 * 86400000)
+      .sort((a, b) => b.hits - a.hits)
+      .map((e) => e.name);
+    if (active.length > 0) {
+      const activeSet = new Set(active);
+      // Fallback maps that were never observed and pool is already warm (>5) are omitted — e.g. cache after removal
+      const fallbackFiltered = FALLBACK_CS2_MAPS.filter((m) => activeSet.has(m) || active.length < 5);
+      const maps = Array.from(new Set([...active, ...fallbackFiltered]));
+      return { maps, source: 'observed' };
+    }
+  }
+  // Legacy fallback (migration): if v2 empty but legacy string array exists, use it
   const observed = await cacheManager.get<string[]>(OBSERVED_CACHE_KEY);
   if (observed && observed.length > 0) {
     return {
