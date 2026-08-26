@@ -21,15 +21,19 @@ describe('DomObserver.findPlayerElements', () => {
     observer = new DomObserver();
   });
 
-  it('locates roster rows via primary selectors and dedupes duplicates in one context', () => {
+  it('locates roster rows via primary selectors; each container keeps its own target', () => {
     const page = document.createElement('div');
     document.body.appendChild(page);
     addRosterRow('s1mple', page);
-    addRosterRow('s1mple', page); // same player rendered twice on the page
+    addRosterRow('s1mple', page); // roster row AND scoreboard row — both get a badge
     addRosterRow('device', page);
 
     const targets = observer.findPlayerElements();
-    expect(targets.map((t) => t.nickname).sort()).toEqual(['device', 's1mple']);
+    expect(targets.map((t) => t.nickname).sort()).toEqual([
+      'device',
+      's1mple',
+      's1mple',
+    ]);
   });
 
   it('returns BOTH the roster copy and the profile-popup copy of the same player', () => {

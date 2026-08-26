@@ -236,6 +236,21 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
 
         {/* Tab Body */}
         <div className="p-5 overflow-y-auto flex-1 space-y-4" role="tabpanel">
+          {stats.statsAvailable === false && (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-950/30 border border-amber-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1 flex-shrink-0 animate-pulse" />
+              <div>
+                <div className="text-[11px] font-bold text-amber-300">
+                  Lifetime stats unavailable
+                </div>
+                <p className="text-[10px] text-zinc-300 mt-0.5 leading-relaxed">
+                  Showing roster basics only (nickname, Elo, level). FACEIT stats
+                  endpoints are still loading or were rate-limited — the full
+                  analysis fills in automatically once data arrives.
+                </p>
+              </div>
+            </div>
+          )}
           {activeTab === 'overview' && <PlayerOverviewTab stats={stats} steam={steam} risk={risk} />}
           {activeTab === 'maps' && <PlayerMapsTab stats={stats} />}
           {activeTab === 'history' && <PlayerHistoryTab stats={stats} />}

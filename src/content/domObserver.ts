@@ -195,10 +195,6 @@ export class DomObserver {
 
   private scanPlayerElements(): PlayerElementTarget[] {
     const targets: PlayerElementTarget[] = [];
-    // Dedupe per CONTEXT: the same player legitimately renders twice — once in
-    // the match roster and once inside the FACEIT profile popup. Keying only
-    // by nickname used to drop the popup copy entirely.
-    const seenKeys = new Set<string>();
 
     const cardSelectors = [
       '[data-testid*="roster-player"]',
@@ -255,20 +251,16 @@ export class DomObserver {
       }
 
       if (nick || playerId) {
-        // Same player may appear in the page AND in the profile popup — allow
-        // one target per context, dedupe only within the same context.
-        const inModalContext = !!targetContainer.closest(
-          '[class*="players-modal"], [class*="PlayersModal"], [role="dialog"], [class*="popover"], [class*="Popover"]'
-        );
-        const key = `${inModalContext ? 'modal' : 'page'}:${(nick || playerId || '').toLowerCase()}`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          targets.push({
-            nickname: nick,
-            element: targetContainer,
-            playerId,
-          });
-        }
+        // Element-identity dedupe ONLY (processedNodes above). Never dedupe by
+        // nickname: the same player legitimately renders in the roster, the
+        // scoreboard tab AND the profile popup — FACEIT's popup uses hashed
+        // class names, so a context heuristic used to drop its copy and the
+        // mini stats table never appeared on profile click.
+        targets.push({
+          nickname: nick,
+          element: targetContainer,
+          playerId,
+        });
       }
     });
 

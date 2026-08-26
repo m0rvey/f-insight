@@ -5,12 +5,11 @@ import { DomObserver } from './domObserver';
 import { createShadowContainer } from './shadowRoot';
 import { autoActionsEngine } from './autoActions';
 import { LobbyAnalysisPayload, ExtensionMessage, MessageResponse } from '../types/messages';
-import { FaceitMatchDetails } from '../types/faceit';
+import { FaceitMatchDetails, FaceitPlayerFullStats } from '../types/faceit';
 import { ExtensionSettings, DEFAULT_SETTINGS } from '../types/settings';
 import { LobbyWidget } from '../components/LobbyWidget';
 import { PlayerBadge } from '../components/PlayerBadge';
 import { PlayerDetailFlyout } from '../components/PlayerDetailFlyout';
-import { QuickControls } from '../components/QuickControls';
 import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { detectCurrentPlayer, DetectedCurrentUser } from '../services/currentUserDetector';
 import { getActiveMapPool } from '../services/mapPool';
@@ -43,7 +42,6 @@ class ContentEngine {
   private mainRoot: Root | null = null;
   private playerRoots: Map<string, Root> = new Map();
   private modalRoot: Root | null = null;
-  private floatingRoot: Root | null = null;
 
   // Render Caching State
   private lastRenderPayload: LobbyAnalysisPayload | null = null;
@@ -198,9 +196,21 @@ class ContentEngine {
       console.warn('[f-insight:Content] init registration failed:', err);
     }
 
+    // Global diagnostics: surface otherwise-silent content-script failures with
+    // a greppable prefix so user-reported console logs point at the real cause.
     try {
-      this.renderFloatingControls();    } catch (err) {
-      console.warn('[f-insight:Content] floating controls render failed:', err);
+      window.addEventListener('error', (event) => {
+        console.warn(
+          '[f-insight:Content] Uncaught error:',
+          event.message,
+          `${event.filename}:${event.lineno}:${event.colno}`
+        );
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        console.warn('[f-insight:Content] Unhandled rejection:', event.reason);
+      });
+    } catch (err) {
+      console.warn('[f-insight:Content] diagnostics registration failed:', err);
     }
   }
 
@@ -514,12 +524,25 @@ class ContentEngine {
     // Self-heal: if FACEIT re-renders and replaces the mount container, the widget
     // host is lost even though the payload is unchanged — re-create it then.
     const mainHostAlive = !!document.getElementById('f-insight-main-host')?.isConnected;
-    this.renderMainWidget(payloadChanged || !mainHostAlive);
-    if (payloadChanged || targetsDirty) {
-      this.renderPlayerBadges();
+    // Failure isolation: a crash in one render stage must never take down the
+    // others (e.g. a broken badge pass should not kill the analysis widget).
+    try {
+      this.renderMainWidget(payloadChanged || !mainHostAlive);
+    } catch (err) {
+      console.warn('[f-insight:Content] main widget render failed:', err);
     }
-    this.renderModal(payloadChanged);
-    this.renderFloatingControls(payloadChanged);
+    if (payloadChanged || targetsDirty) {
+      try {
+        this.renderPlayerBadges();
+      } catch (err) {
+        console.warn('[f-insight:Content] player badges render failed:', err);
+      }
+    }
+    try {
+      this.renderModal(payloadChanged);
+    } catch (err) {
+      console.warn('[f-insight:Content] player flyout render failed:', err);
+    }
   }
 
   private renderMainWidget(forceRender: boolean = true) {
@@ -589,6 +612,11 @@ class ContentEngine {
       );
     }
 
+    // Same player may now legitimately own SEVERAL page-context targets
+    // (roster row, scoreboard row, profile popup card). Give each occurrence a
+    // stable ordinal so host ids and React roots never collide across locations.
+    const occurrenceCount = new Map<string, number>();
+
     for (const target of playerTargets) {
       // Match by nickname OR by the account UUID carried in profile links —
       // newer FACEIT builds may link by id instead of the nickname segment.
@@ -610,7 +638,11 @@ class ContentEngine {
       // pId may contain characters that break CSS selectors (e.g. "dom:nick") —
       // sanitize for the host id while keeping the location key unique.
       const sanitizedId = pId.replace(/[^a-zA-Z0-9_-]/g, '');
-      const locationSuffix = inProfileModal ? '-profile-modal' : '';
+      const occurrence = occurrenceCount.get(pId) || 0;
+      occurrenceCount.set(pId, occurrence + 1);
+      const locationSuffix =
+        (inProfileModal ? '-profile-modal' : '') +
+        (occurrence > 0 ? `-loc${occurrence}` : '');
       const hostId = `f-insight-player-${sanitizedId}${locationSuffix}`;
       const rootKey = `${pId}${locationSuffix}`;
 
@@ -675,10 +707,51 @@ class ContentEngine {
     }
   }
 
+  /**
+   * Roster-derived minimal stats so the flyout OPENS immediately on click even
+   * while lifetime stats are still loading (or unavailable after rate-limits).
+   * `statsAvailable: false` tells the UI to treat zeros as UNKNOWN, per the
+   * Data Availability Contract. Real stats replace this on the next payload
+   * change without any user action.
+   */
+  private buildPlaceholderStats(playerId: string): FaceitPlayerFullStats | null {
+    const match = this.lobbyPayload?.match;
+    if (!match) return null;
+    const roster = [
+      ...(match.teams?.faction1?.roster || []),
+      ...(match.teams?.faction2?.roster || []),
+    ];
+    const item = roster.find((r) => r.player_id === playerId);
+    if (!item) return null;
+    return {
+      playerId,
+      nickname: item.nickname,
+      avatar: item.avatar || '',
+      country: '',
+      steamId64: item.game_player_id,
+      elo: typeof item.elo === 'number' ? item.elo : 0,
+      skillLevel:
+        typeof item.game_skill_level === 'number' ? item.game_skill_level : 0,
+      totalMatches: 0,
+      statsAvailable: false,
+      overallWinRate: 0,
+      overallKd: 0,
+      overallHsPercent: 0,
+      currentStreak: { type: 'NONE', count: 0 },
+      recentMatches: [],
+      mapStats: {},
+      formStatus: 'STABLE',
+      recentKd: 0,
+      recentAdr: 0,
+    };
+  }
+
   private renderModal(forceRender: boolean = true) {
     const hostId = 'f-insight-modal-host';
     const pStats = this.activePlayerFlyoutId
-      ? this.lobbyPayload?.playersStats?.[this.activePlayerFlyoutId]
+      ? this.lobbyPayload?.playersStats?.[this.activePlayerFlyoutId] ||
+        // Fallback: open with roster basics instead of silently doing nothing.
+        this.buildPlaceholderStats(this.activePlayerFlyoutId)
       : undefined;
 
     if (!this.activePlayerFlyoutId || !pStats) {
@@ -714,57 +787,6 @@ class ContentEngine {
               this.activePlayerFlyoutId = null;
               this.renderModal(true);
             }}
-          />
-        </React.StrictMode>
-      );
-    }
-  }
-
-  private renderFloatingControls(forceRender: boolean = true) {
-    const hostId = 'f-insight-floating-host';
-    let host = document.getElementById(hostId);
-
-    if (!this.currentMatchId || !this.settings.enableFloatingControls) {
-      if (this.floatingRoot) {
-        this.floatingRoot.unmount();
-        this.floatingRoot = null;
-      }
-      if (host) host.remove();
-      return;
-    }
-
-    if (!host) {
-      const shadow = createShadowContainer(hostId);
-      // The host itself is the fixed anchor: `contain: content` on the shadow
-      // container makes it a containing block for position:fixed descendants,
-      // so the FAB must live on the host (same pattern as the modal host).
-      shadow.host.style.cssText =
-        'all: initial; position: fixed; bottom: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; align-items: flex-end; gap: 0; pointer-events: auto; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;';
-      document.body.appendChild(shadow.host);
-      this.floatingRoot = createRoot(shadow.container);
-      forceRender = true;
-    }
-
-    const highRiskCount = this.settings.enableRedFlags
-      ? this.lobbyPayload
-        ? Object.values(this.lobbyPayload.riskAnalysis || {}).filter(
-            (r) => r.level === 'HIGH' || r.level === 'CRITICAL'
-          ).length
-        : 0
-      : 0;
-
-    if (this.floatingRoot && forceRender) {
-      this.floatingRoot.render(
-        <React.StrictMode>
-          <QuickControls
-            onRefresh={() => this.currentMatchId && this.fetchLobbyData(this.currentMatchId, true)}
-            isLoading={this.isLoading}
-            isVisible={this.isVisible}
-            onToggleVisibility={() => {
-              this.isVisible = !this.isVisible;
-              this.renderAll();
-            }}
-            highRiskCount={highRiskCount}
           />
         </React.StrictMode>
       );
@@ -807,13 +829,6 @@ class ContentEngine {
         this.modalRoot.unmount();
       } catch (e) {}
       this.modalRoot = null;
-    }
-
-    if (this.floatingRoot) {
-      try {
-        this.floatingRoot.unmount();
-      } catch (e) {}
-      this.floatingRoot = null;
     }
 
     ['f-insight-main-host', 'f-insight-modal-host', 'f-insight-floating-host'].forEach((id) => {
