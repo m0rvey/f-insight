@@ -3,6 +3,7 @@ import {
   INTERCEPT_PATTERNS,
   isInterceptableApiUrl,
   extractMatchIdFromInterceptedUrl,
+  extractRoomIdFromPageUrl,
   classifyInterceptedProfileUrl,
 } from '../src/services/interceptRules';
 
@@ -36,6 +37,18 @@ describe('interceptRules', () => {
     expect(extractMatchIdFromInterceptedUrl('https://api.faceit.com/api/match/v2/match/1-a2b3c4')).toBe('1-a2b3c4');
     expect(extractMatchIdFromInterceptedUrl('https://api.faceit.com/api/match/v2/match/1-x?w=1')).toBe('1-x');
     expect(extractMatchIdFromInterceptedUrl('https://api.faceit.com/users/v1/users/p1')).toBeNull();
+  });
+
+  it('extracts room ids from FACEIT page URLs (URL-guard contract)', () => {
+    expect(
+      extractRoomIdFromPageUrl('https://www.faceit.com/ru/cs2/room/1-9e0df00f-8714-4372-94a1-691a7dd89768')
+    ).toBe('1-9e0df00f-8714-4372-94a1-691a7dd89768');
+    expect(extractRoomIdFromPageUrl('https://www.faceit.com/en/room/1-abc123?round=2')).toBe('1-abc123');
+    // Non-room routes (play page, home, profiles) must yield null so the
+    // content engine refuses to render a stale payload there.
+    expect(extractRoomIdFromPageUrl('https://www.faceit.com/ru/play')).toBeNull();
+    expect(extractRoomIdFromPageUrl('https://www.faceit.com/ru/matchmaking')).toBeNull();
+    expect(extractRoomIdFromPageUrl('https://www.faceit.com/en/players/someone/stats/cs2')).toBeNull();
   });
 
   it('keeps the TS pattern list in sync with the MAIN-world hook contract', () => {

@@ -1,3 +1,5 @@
+import { extractRoomIdFromPageUrl } from '../services/interceptRules';
+
 export type UrlChangeCallback = (url: string, matchId: string | null) => void;
 
 export class SpaWatcher {
@@ -82,11 +84,8 @@ export class SpaWatcher {
   }
 
   public extractMatchId(url: string): string | null {
-    // Format: /room/1-xxxx-xxxx-xxxx or /room/xxxx
-    const match = url.match(/\/room\/([a-zA-Z0-9\-]+)/);
-    if (match && match[1]) {
-      return match[1];
-    }
-    return null;
+    // Format: /room/1-xxxx-xxxx-xxxx or /room/xxxx (shared with the
+    // content-engine URL guard so the two can never drift apart).
+    return extractRoomIdFromPageUrl(url);
   }
 }

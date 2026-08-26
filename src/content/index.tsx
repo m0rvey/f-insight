@@ -14,7 +14,7 @@ import { PlayerDetailFlyout } from '../components/PlayerDetailFlyout';
 import { calculateMapVetoRanking, MapVetoRankItem } from '../services/forecastEngine';
 import { detectCurrentPlayer, DetectedCurrentUser } from '../services/currentUserDetector';
 import { getActiveMapPool } from '../services/mapPool';
-import { extractMatchIdFromInterceptedUrl } from '../services/interceptRules';
+import { extractMatchIdFromInterceptedUrl, extractRoomIdFromPageUrl } from '../services/interceptRules';
 import { NetworkBridge, InterceptedNetPayload } from './netBridge';
 import '../styles/tailwind.css';
 
@@ -520,9 +520,22 @@ class ContentEngine {
       .catch(() => {});
   }
 
+  /**
+   * True while the live address still points at the room we hold data for.
+   * SPA routers repaint the next route BEFORE history.pushState lands, so
+   * currentMatchId can briefly outlive the room markup (room -> /play):
+   * without this re-check badges and the main widget were rendered onto
+   * unrelated pages, producing "0/10 player rows located" against markup
+   * that never existed there. The spaWatcher cleanup follows within its
+   * poll interval; this guard closes the gap.
+   */
+  private isStillOnMatchPage(): boolean {
+    return extractRoomIdFromPageUrl(window.location.href) === this.currentMatchId;
+  }
+
   /** DOM-observer callback; also re-armed after dormancy wake-ups. */
   private handleDomUpdate() {
-    if (this.isDormant) return;
+    if (this.isDormant || !this.isStillOnMatchPage()) return;
 
     if (this.lobbyPayload?.match) {
       if (!this.lobbyPayload.match.server_ip) {
@@ -624,6 +637,7 @@ class ContentEngine {
 
   private renderMainWidget(forceRender: boolean = true) {
     if (!this.currentMatchId || !this.lobbyPayload) return;
+    if (!this.isStillOnMatchPage()) return;
 
     const mountPoint = this.domObserver.findMatchHeaderMountPoint();
     if (!mountPoint) return;
@@ -698,6 +712,7 @@ class ContentEngine {
 
   private renderPlayerBadges(allowTextFallback: boolean = true) {
     if (!this.lobbyPayload || this.isDormant) return;
+    if (!this.isStillOnMatchPage()) return;
 
     const allRoster = this.getAllRoster();
     const playerTargets = this.domObserver.findPlayerElements(

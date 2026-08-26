@@ -31,6 +31,18 @@ export function extractMatchIdFromInterceptedUrl(url: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * Extracts the room/match id from a FACEIT PAGE url (/room/<id>), used to
+ * verify the live address bar still points at the match whose data we hold.
+ * SPA frameworks repaint the next route BEFORE history.pushState lands, so
+ * content-side renderers must re-check this against window.location —
+ * otherwise stale payloads get rendered onto unrelated pages (/play, home).
+ */
+export function extractRoomIdFromPageUrl(url: string): string | null {
+  const match = url.match(/\/room\/([a-zA-Z0-9\-]+)/);
+  return match && match[1] ? match[1] : null;
+}
+
 export type InterceptedProfileKind = 'user' | 'stats' | 'time';
 
 /**
