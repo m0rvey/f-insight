@@ -58,7 +58,7 @@ export function parsePlayerPayload(
   const overallKd = toFloat(pick(lifetime, 'Average K/D Ratio', 'K/D Ratio', 'k5'), 1.0) ?? 1.0;
   const overallHsPercent = toFloat(pick(lifetime, 'Average Headshots %', 'Headshots %', 'k8'), 0) ?? 0;
   const overallAdrRaw = pick(lifetime, 'ADR', 'adr', 'c3');
-  const overallAdr = overallAdrRaw ? toFloat(overallAdrRaw, undefined) : undefined;
+  let overallAdr = overallAdrRaw ? toFloat(overallAdrRaw, undefined) : undefined;
 
   // Segments breakdown (Maps) - Support both direct array and { segments: [...] }
   const mapStats: Record<string, MapSpecificStats> = {};
@@ -126,10 +126,60 @@ export function parsePlayerPayload(
       const mapName = (item.i1 || item.stats?.Map || item.map || '').replace(/^cs2_/, '').replace(/^de_/, '').toLowerCase();
       const kills = toInt(item.i6 ?? item.stats?.Kills ?? item.kills, 0);
       const deaths = toInt(item.i8 ?? item.stats?.Deaths ?? item.deaths, 0);
-      const adrRaw = item.c3 || item.stats?.ADR || item.adr;
-      const adr = adrRaw ? toFloat(adrRaw, undefined) : undefined;
-      const hsRaw = item.c4 || item.stats?.['Headshots %'];
-      const hsPercent = hsRaw ? toFloat(hsRaw, undefined) : undefined;
+
+      // --- ADR / HS% extraction across payload generations -----------------
+      // Per-match stat sources drift between FACEIT generations: CS2
+      // responses may carry a named `stats` object ('ADR', 'Headshots %'),
+      // legacy indexed columns (c3/c4), both, or neither — and column
+      // semantics drifted between eras (some payloads put Headshots % in
+      // c3). Strategy:
+      //   1. Named stats win outright (plausibility-checked).
+      //   2. Otherwise use the c-columns; when the headshot-count anchor
+      //      (i9 + kills) lets us compute HS% independently, any candidate
+      //      matching it is identified as Headshots % and excluded from ADR.
+      //   3. Nothing plausible => undefined (never fabricate).
+      const namedStats: Record<string, unknown> | null =
+        item.stats && typeof item.stats === 'object' ? item.stats : null;
+      const isPlausibleAdr = (v: number | undefined): v is number =>
+        v !== undefined && v >= 5 && v <= 200;
+
+      const headshotCount = toInt(item.i9, 0);
+      const derivedHsPct = kills > 0 && headshotCount > 0 ? (headshotCount / kills) * 100 : undefined;
+      const looksLikeDerivedHs = (v: number) =>
+        derivedHsPct !== undefined && Math.abs(v - derivedHsPct) <= 5;
+
+      let adr: number | undefined;
+      const namedAdr = namedStats ? toFloat(pick(namedStats, 'ADR', 'adr'), undefined) : undefined;
+      if (isPlausibleAdr(namedAdr)) {
+        adr = namedAdr;
+      } else {
+        const c3Val = item.c3 !== undefined && item.c3 !== '' ? toFloat(item.c3, undefined) : undefined;
+        const c4Val = item.c4 !== undefined && item.c4 !== '' ? toFloat(item.c4, undefined) : undefined;
+        const c3AsAdr = isPlausibleAdr(c3Val) && !looksLikeDerivedHs(c3Val) ? c3Val : undefined;
+        const c4AsAdr = isPlausibleAdr(c4Val) && !looksLikeDerivedHs(c4Val) ? c4Val : undefined;
+        // Documented convention places ADR in c3; c4 only rescues the
+        // swapped-column case, and only when the anchor proves which is which.
+        adr = c3AsAdr ?? (derivedHsPct !== undefined ? c4AsAdr : undefined);
+        if (adr === undefined && item.adr !== undefined) {
+          const plain = toFloat(item.adr, undefined);
+          if (isPlausibleAdr(plain)) adr = plain;
+        }
+      }
+
+      let hsPercent: number | undefined;
+      const namedHs = namedStats
+        ? toFloat(namedStats['Headshots %'] as string | undefined, undefined)
+        : undefined;
+      if (namedHs !== undefined && namedHs > 0 && namedHs <= 100) {
+        hsPercent = namedHs;
+      } else {
+        const c4Val = item.c4 !== undefined && item.c4 !== '' ? toFloat(item.c4, undefined) : undefined;
+        const c4UsableHs =
+          c4Val !== undefined && c4Val > 0 && c4Val <= 100 &&
+          (derivedHsPct === undefined || looksLikeDerivedHs(c4Val));
+        if (c4UsableHs) hsPercent = c4Val;
+        else if (derivedHsPct !== undefined) hsPercent = Math.round(derivedHsPct * 10) / 10;
+      }
 
       if (mapName) {
         if (!historyMapStats[mapName]) {
@@ -198,6 +248,24 @@ export function parsePlayerPayload(
         wins: mWins,
         losses: mCount - mWins,
       };
+    }
+  }
+
+  // Many CS2 accounts have no lifetime 'ADR' aggregate at all (the field is
+  // only present for some profiles/eras). Approximate it from the per-map
+  // segments, matches-weighted, so real data surfaces instead of an empty
+  // badge cell. Stays undefined when nothing real exists anywhere.
+  if (overallAdr === undefined) {
+    let adrWeightedSum = 0;
+    let adrMatches = 0;
+    for (const ms of Object.values(mapStats)) {
+      if (ms.avgAdr !== undefined && ms.matches > 0) {
+        adrWeightedSum += ms.avgAdr * ms.matches;
+        adrMatches += ms.matches;
+      }
+    }
+    if (adrMatches > 0) {
+      overallAdr = Math.round((adrWeightedSum / adrMatches) * 10) / 10;
     }
   }
 

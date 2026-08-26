@@ -145,6 +145,62 @@ describe('parsePlayerPayload', () => {
     expect(result.last30WinRate).toBe(100);
   });
 
+  it('should read per-match ADR/HS from the named stats object (CS2 shape)', () => {
+    const history = [
+      {
+        i10: '1',
+        i1: 'cs2_mirage',
+        i6: '20',
+        i8: '15',
+        // Named per-match stats as returned by newer CS2 payloads
+        stats: { Kills: '20', Deaths: '15', ADR: '87.5', 'Headshots %': '41' },
+        // Legacy columns deliberately wrong here — named stats must win
+        c3: '999',
+        c4: '13',
+      },
+    ];
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, null, null, null, history);
+
+    expect(result.recentMatches[0].adr).toBeCloseTo(87.5);
+    expect(result.recentMatches[0].hsPercent).toBeCloseTo(41);
+    expect(result.last30Adr).toBe(88); // Math.round(avg of single value)
+  });
+
+  it('should rescue ADR from a swapped column via the headshot-count anchor', () => {
+    // kills=20, headshots(i9)=8 -> real HS% is 40. The payload carries HS%
+    // in c3 (era-drifted column semantics) and ADR in c4.
+    const history = [{ i10: '1', i1: 'cs2_dust2', i6: '20', i8: '15', i9: '8', c3: '40', c4: '82' }];
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, null, null, null, history);
+
+    expect(result.recentMatches[0].adr).toBe(82);
+    expect(result.recentMatches[0].hsPercent).toBe(40);
+    expect(result.last30Adr).toBe(82);
+  });
+
+  it('should approximate overall ADR from map segments when lifetime lacks it', () => {
+    const user = { nickname: 'SegAdr', games: { cs2: { faceit_elo: 2000, skill_level: 9 } } };
+    const stats = {
+      lifetime: { 'Total Matches': '30', 'Win Rate %': '55', 'Average K/D Ratio': '1.2', 'Average Headshots %': '45' },
+      segments: [
+        {
+          _id: { segmentId: 'cs2_mirage' },
+          stats: { Matches: '20', Wins: '12', 'Win Rate %': '60', 'K/D Ratio': '1.3', ADR: '90' },
+        },
+        {
+          _id: { segmentId: 'cs2_nuke' },
+          stats: { Matches: '10', Wins: '4', 'Win Rate %': '40', 'K/D Ratio': '1.1', ADR: '70' },
+        },
+      ],
+    };
+
+    const result = parsePlayerPayload(PLAYER_ID, undefined, user, stats, null, []);
+
+    // (90*20 + 70*10) / 30 = 83.33... rounded to one decimal
+    expect(result.overallAdr).toBeCloseTo(83.3);
+  });
+
   it('should strip thousands separators from lifetime and segment numbers', () => {
     const user = { nickname: 'CommaGuy', games: { cs2: { faceit_elo: 2100, skill_level: 10 } } };
     const stats = {

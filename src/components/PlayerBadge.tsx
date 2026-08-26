@@ -50,7 +50,9 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
   const displayHs = stats.last30HsPercent ?? (stats.overallHsPercent > 0 ? stats.overallHsPercent : undefined);
   const displayAdr = stats.last30Adr ?? stats.overallAdr;
   const displayWinRate = stats.last30WinRate ?? (stats.overallWinRate > 0 ? stats.overallWinRate : undefined);
-  const statsWindow = stats.last30Matches !== undefined ? `last ${stats.last30Matches} matches` : 'lifetime stats';
+  const statsWindow = stats.last30Matches !== undefined && stats.last30Matches > 0
+    ? `last ${stats.last30Matches} matches`
+    : 'lifetime sample';
 
   const riskBadgeStyle = risk ? RISK_LEVEL_BADGE_STYLES[risk.level] || RISK_LEVEL_BADGE_STYLES.LOW : null;
 
@@ -80,58 +82,65 @@ export const PlayerBadge = React.memo<PlayerBadgeProps>(({
       }`}
       title={isCurrentUser ? 'Your Profile (Click to view full details)' : 'Click to view deep player performance, match history, and risk analysis'}
     >
-      {/* Top Row: Key Performance Metrics (last 30 matches) */}
-      <div className="grid grid-cols-4 gap-1 text-center font-mono">
-        {/* K/D */}
-        <div className="stat-cell p-1 min-w-0" title={`Average K/D over the ${statsWindow}`}>
-          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">K/D 30M</div>
-          <div
-            className={`text-xs font-black mt-0.5 truncate ${
-              displayKd >= 1.25
-                ? 'text-emerald-400'
-                : displayKd < 0.95
-                ? 'text-red-400'
-                : 'text-zinc-100'
-            }`}
-          >
-            {displayKd.toFixed(2)}
-          </div>
-        </div>
-
-        {/* ADR */}
-        <div className="stat-cell p-1 min-w-0" title={`Average ADR over the ${statsWindow}`}>
-          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">ADR 30M</div>
-          {displayAdr !== undefined ? (
+      {/* Top Row: Key Performance Metrics — one seamless strip */}
+      <div className="rounded-lg border border-white/[0.06] bg-black/30 overflow-hidden">
+        <div className="grid grid-cols-4 divide-x divide-white/[0.06] text-center font-mono">
+          {/* K/D */}
+          <div className="px-1 pt-1.5 pb-1 min-w-0" title={`Average K/D over the ${statsWindow}`}>
+            <div className="text-[9px] leading-none text-zinc-500 font-sans uppercase font-bold tracking-wider">K/D</div>
             <div
-              className={`text-xs font-black mt-0.5 truncate ${
-                displayAdr >= 85
+              className={`text-xs font-black mt-1 truncate ${
+                displayKd >= 1.25
+                  ? 'text-emerald-400'
+                  : displayKd < 0.95
+                  ? 'text-red-400'
+                  : 'text-zinc-100'
+              }`}
+            >
+              {displayKd.toFixed(2)}
+            </div>
+          </div>
+
+          {/* ADR */}
+          <div className="px-1 pt-1.5 pb-1 min-w-0" title={`Average ADR over the ${statsWindow}`}>
+            <div className="text-[9px] leading-none text-zinc-500 font-sans uppercase font-bold tracking-wider">ADR</div>
+            <div
+              className={`text-xs font-black mt-1 truncate ${
+                displayAdr === undefined
+                  ? 'text-zinc-600'
+                  : displayAdr >= 85
                   ? 'text-emerald-400'
                   : displayAdr < 70
                   ? 'text-zinc-400'
                   : 'text-zinc-100'
               }`}
             >
-              {Math.round(displayAdr)}
+              {displayAdr !== undefined ? Math.round(displayAdr) : '—'}
             </div>
-          ) : (
-            <div className="text-xs font-black text-zinc-400 mt-0.5">—</div>
-          )}
-        </div>
+          </div>
 
-        {/* HS% */}
-        <div className="stat-cell p-1 min-w-0" title={`Average headshot % over the ${statsWindow}`}>
-          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">HS% 30M</div>
-          <div className="text-xs font-black text-zinc-100 mt-0.5 truncate">
-            {displayHs !== undefined ? `${Math.round(displayHs)}%` : <span className="text-zinc-400">—</span>}
+          {/* HS% */}
+          <div className="px-1 pt-1.5 pb-1 min-w-0" title={`Average headshot % over the ${statsWindow}`}>
+            <div className="text-[9px] leading-none text-zinc-500 font-sans uppercase font-bold tracking-wider">HS%</div>
+            <div className="text-xs font-black mt-1 truncate text-zinc-100">
+              {displayHs !== undefined ? `${Math.round(displayHs)}%` : <span className="text-zinc-600">—</span>}
+            </div>
+          </div>
+
+          {/* Win Rate */}
+          <div className="px-1 pt-1.5 pb-1 min-w-0" title={`Win rate over the ${statsWindow}`}>
+            <div className="text-[9px] leading-none text-zinc-500 font-sans uppercase font-bold tracking-wider">WR</div>
+            <div className="text-xs font-black mt-1 truncate text-zinc-100">
+              {displayWinRate !== undefined ? `${displayWinRate.toFixed(0)}%` : <span className="text-zinc-600">—</span>}
+            </div>
           </div>
         </div>
 
-        {/* Win Rate & Matches */}
-        <div className="stat-cell p-1 min-w-0" title={`Win rate over the ${statsWindow}`}>
-          <div className="text-[10px] text-zinc-400 font-sans uppercase font-bold tracking-wide">WR 30M</div>
-          <div className="text-xs font-black text-zinc-100 mt-0.5 truncate">
-            {displayWinRate !== undefined ? `${displayWinRate.toFixed(0)}%` : <span className="text-zinc-400">—</span>}
-          </div>
+        {/* Sample-window footer: makes the numbers self-explanatory and the
+            strip read as a native, always-there part of the card */}
+        <div className="flex items-center justify-between px-2 py-[3px] border-t border-white/[0.06] bg-white/[0.02]">
+          <span className="text-[8px] leading-none font-mono uppercase tracking-widest text-zinc-600">{statsWindow}</span>
+          <span className="text-[8px] leading-none font-mono font-black uppercase tracking-widest text-faceit-orange/40 group-hover:text-faceit-orange/70 transition-colors">f-insight</span>
         </div>
       </div>
 
