@@ -151,4 +151,69 @@ describe('currentUserDetector', () => {
     expect(result.isDetected).toBe(true);
     expect(result.faction).toBe('faction2');
   });
+
+  it('rejects ambiguous observed identities spanning both factions', () => {
+    // Adversarial: opening opponent profiles produces the same users/v1
+    // identity signal as your own navbar fetch. Two distinct roster hits
+    // must NOT guess — detection fails honestly instead.
+    const result = detectCurrentPlayer(
+      [{ player_id: 'p1_id', nickname: 's1mple' }],
+      [{ player_id: 'p3_id', nickname: 'zywoo' }],
+      [{ id: 'p1_id' }, { id: 'p3_id' }]
+    );
+    expect(result.isDetected).toBe(false);
+  });
+
+  it('skips an ambiguous higher tier but resolves from the next one', () => {
+    // Auth-tier pollution: two different roster players cached under known
+    // keys make Tier 1 ambiguous. The unambiguous traffic identity still
+    // resolves via Tier 3.
+    mockStorage['user'] = JSON.stringify({ id: 'p1_id', nickname: 's1mple' });
+    mockStorage['auth_user'] = JSON.stringify({ id: 'p3_id', nickname: 'zywoo' });
+    delete (globalThis as any).document;
+
+    const result = detectCurrentPlayer(
+      [{ player_id: 'p1_id', nickname: 's1mple' }],
+      [{ player_id: 'p3_id', nickname: 'zywoo' }],
+      [{ id: 'p1_id', nickname: 's1mple' }]
+    );
+    expect(result.isDetected).toBe(true);
+    expect(result.playerId).toBe('p1_id');
+    expect(result.faction).toBe('faction1');
+  });
+
+  it('rejects an ambiguous storage sweep instead of first-match-wins', () => {
+    // Adversarial: previously the flat pool returned the FIRST roster hit,
+    // so whichever stale blob came first decided "your" team.
+    mockStorage['faceit-web:a'] = JSON.stringify({ user: { guid: 'p1_id', nickname: 's1mple' } });
+    mockStorage['faceit-web:b'] = JSON.stringify({ user: { guid: 'p3_id', nickname: 'zywoo' } });
+    delete (globalThis as any).document;
+
+    const result = detectCurrentPlayer(
+      [{ player_id: 'p1_id', nickname: 's1mple' }],
+      [{ player_id: 'p3_id', nickname: 'zywoo' }]
+    );
+    expect(result.isDetected).toBe(false);
+  });
+
+  it('survives malformed percent-encoding in navbar links', () => {
+    (globalThis as any).document = {
+      querySelectorAll: (sel: string) => {
+        if (sel.includes('header')) {
+          return [
+            { getAttribute: (attr: string) => (attr === 'href' ? '/players/%zz' : null) },
+            { getAttribute: (attr: string) => (attr === 'href' ? '/en/players/zywoo' : null) },
+          ];
+        }
+        return [];
+      },
+    };
+
+    const result = detectCurrentPlayer(
+      [{ player_id: 'p1_id', nickname: 's1mple' }],
+      [{ player_id: 'p3_id', nickname: 'zywoo' }]
+    );
+    expect(result.isDetected).toBe(true);
+    expect(result.faction).toBe('faction2');
+  });
 });
