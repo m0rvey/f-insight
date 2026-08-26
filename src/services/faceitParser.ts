@@ -19,16 +19,42 @@ const pick = (obj: Record<string, any>, ...keys: string[]): string | undefined =
   return undefined;
 };
 
-/** FACEIT formats some numbers with thousands separators ("1,234"). */
-const toInt = (raw: string | undefined, fallback: number): number => {
-  if (raw === undefined) return fallback;
-  const n = parseInt(raw.replace(/[,\s]/g, ''), 10);
-  return Number.isFinite(n) ? n : fallback;
+/** Locale-safe numeric sanitization: handles "1,234" (thousands), "84,5" (RU decimal), "86%" etc. */
+function sanitizeNumber(raw: string): string {
+  let s = String(raw).trim().replace(/[\u00A0\s]/g, '').replace('%', '');
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    s = s.replace(/,/g, '');
+  } else if (hasComma) {
+    // Thousands "1,234" or "12,345,678" vs decimal "84,5"
+    if (/^\d{1,3}(,\d{3})+$/.test(s)) {
+      s = s.replace(/,/g, '');
+    } else {
+      const parts = s.split(',');
+      const last = parts[parts.length - 1];
+      if (last.length === 3 && parts.length > 1 && /^\d+$/.test(last) && s.split(',').every((p) => /^\d+$/.test(p.replace(/^-/, '')))) {
+        s = s.replace(/,/g, '');
+      } else {
+        s = s.replace(',', '.');
+      }
+    }
+  }
+  return s;
+}
+
+const toInt = (raw: string | number | undefined, fallback: number): number => {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const str = typeof raw === 'number' ? String(raw) : sanitizeNumber(String(raw));
+  const f = parseFloat(str);
+  if (!Number.isFinite(f)) return fallback;
+  return Math.round(f);
 };
 
-const toFloat = (raw: string | undefined, fallback?: number): number | undefined => {
-  if (raw === undefined) return fallback;
-  const n = parseFloat(raw.replace(/[,\s]/g, ''));
+const toFloat = (raw: string | number | undefined, fallback?: number): number | undefined => {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const str = typeof raw === 'number' ? String(raw) : sanitizeNumber(String(raw));
+  const n = parseFloat(str);
   return Number.isFinite(n) ? n : fallback;
 };
 
@@ -45,7 +71,18 @@ export function parsePlayerPayload(
   const skillLevel = cs2Game.skill_level || 1;
   const steamId64 = cs2Game.game_player_id || user?.steam_id_64;
   const nickname = user?.nickname || fallbackNickname || 'Player';
-  const avatar = user?.avatar || '';
+  const rawAvatar = user?.avatar || '';
+  // P1-11: only faceit CDN avatars are trusted — evil.com/track would leak IP via Referer
+  let avatar = '';
+  if (typeof rawAvatar === 'string' && rawAvatar) {
+    if (/^https:\/\/.*\.faceit-cdn\.net\//.test(rawAvatar) || /^https:\/\/(www\.)?faceit\.com\//.test(rawAvatar)) {
+      avatar = rawAvatar;
+    } else if (rawAvatar.startsWith('https://') || rawAvatar.startsWith('data:')) {
+      avatar = '';
+    } else {
+      avatar = rawAvatar;
+    }
+  }
   const country = user?.country || '';
 
   const statsObj = Array.isArray(stats) ? null : stats;
@@ -125,29 +162,44 @@ export function parsePlayerPayload(
       const derivedHsPct = kills > 0 && headshotCount > 0 ? (headshotCount / kills) * 100 : undefined;
       const looksLikeDerivedHs = (v: number) => derivedHsPct !== undefined && Math.abs(v - derivedHsPct) <= 5;
 
+      // Wildcard scan for any c* column holding ADR — survives FACEIT schema drift (c2/c5 etc.)
+      const scanCAdr = (): number | undefined => {
+        const candidates: Array<{ key: string; val: number }> = [];
+        for (const k of Object.keys(item).filter((kk) => /^c\d+$/i.test(kk))) {
+          const v = item[k] !== undefined && item[k] !== '' ? toFloat(item[k], undefined) : undefined;
+          if (isPlausibleAdr(v) && !looksLikeDerivedHs(v!)) candidates.push({ key: k.toLowerCase(), val: v! });
+        }
+        if (candidates.length === 0) return undefined;
+        // Prefer conventional c3, then c4, then c5, c2, else first plausible
+        const byKey = (kk: string) => candidates.find((c) => c.key === kk)?.val;
+        return byKey('c3') ?? byKey('c4') ?? byKey('c5') ?? byKey('c2') ?? candidates[0].val;
+      };
+
       let adr: number | undefined;
-      const namedAdr = namedStats ? toFloat(pick(namedStats, 'ADR', 'adr'), undefined) : undefined;
-      if (isPlausibleAdr(namedAdr)) {
+      const namedAdr = namedStats
+        ? toFloat(pick(namedStats, 'ADR', 'Average Damage', 'Damage', 'adr') as any, undefined)
+        : undefined;
+      if (isPlausibleAdr(namedAdr) && !looksLikeDerivedHs(namedAdr!)) {
         adr = namedAdr;
       } else {
-        const c3Val = item.c3 !== undefined && item.c3 !== '' ? toFloat(item.c3, undefined) : undefined;
-        const c4Val = item.c4 !== undefined && item.c4 !== '' ? toFloat(item.c4, undefined) : undefined;
-        const c3AsAdr = isPlausibleAdr(c3Val) && !looksLikeDerivedHs(c3Val) ? c3Val : undefined;
-        const c4AsAdr = isPlausibleAdr(c4Val) && !looksLikeDerivedHs(c4Val) ? c4Val : undefined;
-        adr = c3AsAdr ?? (derivedHsPct !== undefined ? c4AsAdr : undefined);
-        if (adr === undefined && item.adr !== undefined) {
-          const plain = toFloat(item.adr, undefined);
+        const cAdr = scanCAdr();
+        if (cAdr !== undefined) adr = cAdr;
+        else if (item.adr !== undefined) {
+          const plain = toFloat(item.adr as any, undefined);
           if (isPlausibleAdr(plain)) adr = plain;
         }
       }
 
       let hsPercent: number | undefined;
-      const namedHs = namedStats ? toFloat(namedStats['Headshots %'] as string | undefined, undefined) : undefined;
+      const namedHs = namedStats
+        ? toFloat(pick(namedStats, 'Headshots %', 'HS%', 'Headshots', 'k8') as any, undefined)
+        : undefined;
       if (namedHs !== undefined && namedHs > 0 && namedHs <= 100) {
         hsPercent = namedHs;
       } else {
-        const c4Val = item.c4 !== undefined && item.c4 !== '' ? toFloat(item.c4, undefined) : undefined;
-        const c4UsableHs = c4Val !== undefined && c4Val > 0 && c4Val <= 100 && (derivedHsPct === undefined || looksLikeDerivedHs(c4Val));
+        const c4Val = item.c4 !== undefined && item.c4 !== '' ? toFloat(item.c4 as any, undefined) : undefined;
+        const c4UsableHs =
+          c4Val !== undefined && c4Val > 0 && c4Val <= 100 && (derivedHsPct === undefined || looksLikeDerivedHs(c4Val));
         if (c4UsableHs) hsPercent = c4Val;
         else if (derivedHsPct !== undefined) hsPercent = Math.round(derivedHsPct * 10) / 10;
       }
@@ -184,7 +236,7 @@ export function parsePlayerPayload(
         score: item.i18 || item.stats?.Score || '13:0',
         kills,
         deaths,
-        kd: parseFloat(item.c2 || item.stats?.['K/D Ratio'] || (deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2))),
+        kd: toFloat(item.c2 as any, undefined) ?? toFloat(item.stats?.['K/D Ratio'] as any, undefined) ?? (deaths > 0 ? parseFloat((kills / deaths).toFixed(2)) : kills),
         hsPercent,
         adr,
         elo: rawMatchElo,
@@ -316,7 +368,7 @@ export function parseMatchPayload(p: any): FaceitMatchDetails {
     ? mapPicks[mapPicks.length - 1]
     : [...(p.voting?.map?.entities || [])].reverse().find((e: any) => e.status === 'pick')?.name;
   const rawIp = p.configured_server_ip || p.server_ip;
-  const serverIp = rawIp && /^[a-zA-Z0-9.\-]+:\d+$/.test(rawIp) ? rawIp : undefined;
+  const serverIp = rawIp && /^\d{1,3}(?:\.\d{1,3}){3}:\d{1,5}$/.test(rawIp) ? rawIp : undefined;
   const mapRoster = (roster: any[]) =>
     (roster || []).map((r: any) => ({
       player_id: r.id || r.player_id,

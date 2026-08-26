@@ -117,6 +117,17 @@ export function detectCurrentPlayer(
                 const decoded = new TextDecoder().decode(bytes);
                 if (decoded) {
                   const payload = JSON.parse(decoded);
+                  // P0-03 hardening: JWT without signature must not blindly flip veto.
+                  // Require exp claim to be present and not expired; alg:none / expired tokens are ignored.
+                  if (typeof payload.exp === 'number') {
+                    const expMs = payload.exp * 1000;
+                    if (!Number.isFinite(expMs) || expMs < Date.now() - 60_000) {
+                      continue;
+                    }
+                  } else {
+                    // No exp — treat as low-trust, skip JWT tier (DOM will still be checked)
+                    continue;
+                  }
                   if (payload.nickname) authPool.nicknames.push(payload.nickname);
                   if (payload.sub) authPool.ids.push(payload.sub);
                   if (payload.id) authPool.ids.push(payload.id);

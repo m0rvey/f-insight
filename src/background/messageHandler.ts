@@ -35,6 +35,16 @@ export class BackgroundMessageHandler {
     this.initialized = true;
     // Opportunistic cache cleanup on startup
     cacheManager.cleanup().catch(() => {});
+    // P1-05: prevent subscriber leak when tabs close without stream completion
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
+        chrome.tabs.onRemoved.addListener((tabId: number) => {
+          for (const subs of this.streamSubscribers.values()) subs.delete(tabId);
+          // Also prune empty match entries
+          for (const [mid, set] of this.streamSubscribers.entries()) if (set.size === 0) this.streamSubscribers.delete(mid);
+        });
+      }
+    } catch {}
   }
 
   async loadSettings(): Promise<ExtensionSettings> {

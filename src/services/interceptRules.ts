@@ -62,9 +62,15 @@ export function classifyInterceptedProfileUrl(
   for (const [re, kind] of patterns) {
     const m = url.match(re);
     if (m && m[1]) {
-      const playerId = decodeURIComponent(m[1]);
-      // Same charset the background validates everywhere else.
-      if (/^[a-zA-Z0-9.\-_]{1,64}$/.test(playerId)) {
+      let playerId: string;
+      try {
+        playerId = decodeURIComponent(m[1]);
+      } catch {
+        // Malformed percent-encoding must not crash the whole handler
+        playerId = m[1];
+      }
+      // Allow unicode nicknames (RU etc.) — reject only path separators / query / whitespace
+      if (/^[^/?#\s]{1,64}$/.test(playerId) && playerId.trim() === playerId) {
         return { kind, playerId };
       }
     }

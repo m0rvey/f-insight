@@ -6,6 +6,7 @@ import {
 import { AdvancedMatchPrediction } from '../types/messages';
 import { PremadeGroup } from '../types/settings';
 import { RiskAnalysisResult } from '../types/risk';
+import { MAP_POOL_CONFIG } from '../constants/config';
 
 /**
  * Calculates FCR (Firepower Contribution Rating) for players on a team.
@@ -392,18 +393,8 @@ export function calculateMapVetoRanking(params: {
   availableMaps?: string[];
   userFaction?: 'faction1' | 'faction2';
 }): MapVetoRankItem[] {
-  const DEFAULT_CS2_MAPS = [
-    'mirage',
-    'inferno',
-    'nuke',
-    'ancient',
-    'anubis',
-    'dust2',
-    'vertigo',
-    'cache',
-    'train',
-    'overpass',
-  ];
+  // Single source of truth — must stay in sync with MAP_POOL_CONFIG (Active Duty 2026-01)
+  const DEFAULT_CS2_MAPS = [...MAP_POOL_CONFIG.FALLBACK_MAPS] as string[];
 
   const mapPool = params.availableMaps && params.availableMaps.length > 0
     ? Array.from(new Set(params.availableMaps.map((m) => m.replace(/^cs2_/, '').replace(/^csgo_/, '').replace(/^de_/, '').toLowerCase().trim()).filter(Boolean)))

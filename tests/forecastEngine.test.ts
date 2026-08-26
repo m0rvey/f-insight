@@ -288,13 +288,15 @@ describe('forecastEngine', () => {
       recentAdr: adr,
     });
 
-    it('should rank team best map as Rank 1 MUST_PICK and worst map as PERMABAN in full CS2 pool with Cache', () => {
+    it('should rank team best map as Rank 1 MUST_PICK and worst map as PERMABAN in Active Duty pool (7 maps)', () => {
       const f1Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f1_${i}`, 'mirage', 50, 40, 1.4, 90)); // Dominating on Mirage
       const f2Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f2_${i}`, 'nuke', 50, 40, 1.4, 90)); // Dominating on Nuke
 
       const rankings = calculateMapVetoRanking({ f1Players, f2Players });
-      expect(rankings).toHaveLength(10);
-      expect(rankings.some((r) => r.mapName === 'cache')).toBe(true);
+      expect(rankings).toHaveLength(7);
+      expect(rankings.some((r) => r.mapName === 'train')).toBe(true);
+      expect(rankings.some((r) => r.mapName === 'cache')).toBe(false);
+      expect(rankings.some((r) => r.mapName === 'vertigo')).toBe(false);
 
       const rank1 = rankings[0];
       expect(rank1.mapName).toBe('mirage');
@@ -304,7 +306,7 @@ describe('forecastEngine', () => {
 
       const worstRank = rankings[rankings.length - 1];
       expect(worstRank.mapName).toBe('nuke');
-      expect(worstRank.rank).toBe(10);
+      expect(worstRank.rank).toBe(7);
       expect(worstRank.recommendation).toBe('PERMABAN');
       expect(worstRank.advantageDelta).toBeLessThan(0);
     });

@@ -23,6 +23,20 @@
   window.__fInsightNetHooked = true;
 
   const EVENT_NAME = 'f-insight:net-payload';
+  // P0-01 hardening: nonce prevents trivial CustomEvent forgery from page scripts.
+  // MAIN world stores it on documentElement so isolated world can read same DOM.
+  let NONCE = '';
+  try {
+    NONCE = (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+    window.__fInsightNonce = NONCE;
+    if (document.documentElement) {
+      document.documentElement.dataset.fInsightNonce = NONCE;
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        try { document.documentElement.dataset.fInsightNonce = NONCE; } catch (_) {}
+      }, { once: true });
+    }
+  } catch (_) { NONCE = 'static-' + Math.random().toString(36).slice(2); }
 
   // Known api.faceit.com endpoints worth observing. Keep in sync with
   // src/services/interceptRules.ts (defense-in-depth: the isolated world
@@ -48,7 +62,7 @@
   const dispatch = (url, status, body) => {
     try {
       document.dispatchEvent(
-        new CustomEvent(EVENT_NAME, { detail: { url: String(url), status, body } })
+        new CustomEvent(EVENT_NAME, { detail: { url: String(url), status, body, nonce: NONCE } })
       );
     } catch (_) {}
   };

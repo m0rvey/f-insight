@@ -24,7 +24,7 @@ export interface MapPoolResult {
 }
 
 function normalizeMapName(s: string): string {
-  return s.replace(/^(cs2_|csgo_|de_)/, '').toLowerCase().trim();
+  return s.replace(/^(cs2_|csgo_|de_)/i, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
 }
 
 /**
@@ -68,27 +68,44 @@ export function parseMapPoolConfig(raw: unknown): string[] {
 /**
  * Pulls every recognizable map name out of an intercepted match payload
  * (raw API shape or our parsed FaceitMatchDetails — both supported).
+ * Covers entities, pick arrays, veto, and guid→name where possible.
  */
 export function harvestMapNamesFromMatchPayload(raw: unknown): string[] {
   const p = raw as any;
-  const names: string[] = [];
+  const bag: any[] = [];
 
+  // Primary voting entities (various envelope shapes)
   const entities =
     p?.voting?.map?.entities ??
     p?.payload?.voting?.map?.entities ??
-    p?.match?.voting?.map?.entities;
-  if (Array.isArray(entities)) {
-    for (const e of entities) {
-      if (typeof e?.name === 'string') names.push(e.name);
-      else if (typeof e?.id === 'string') names.push(e.id);
-    }
+    p?.match?.voting?.map?.entities ??
+    p?.voting?.veto?.entities ??
+    p?.payload?.voting?.veto?.entities;
+  if (Array.isArray(entities)) bag.push(...entities);
+
+  // Picks are map names directly (FACEIT accumulates picks in order)
+  const picks = p?.voting?.map?.pick ?? p?.payload?.voting?.map?.pick ?? p?.match?.voting?.map?.pick;
+  if (Array.isArray(picks)) {
+    for (const n of picks) if (typeof n === 'string') bag.push({ name: n });
   }
 
-  const single = p?.map ?? p?.payload?.map ?? p?.match?.map;
-  if (typeof single === 'string') names.push(single);
-  else if (typeof single?.name === 'string') names.push(single.name);
+  // Single map during ON_GOING/selected_map
+  const single = p?.map ?? p?.payload?.map ?? p?.match?.map ?? p?.selected_map ?? p?.payload?.selected_map;
+  if (typeof single === 'string') bag.push({ name: single });
+  else if (single && typeof single?.name === 'string') bag.push({ name: single.name });
 
-  return names.map(normalizeMapName).filter(Boolean);
+  const names: string[] = [];
+  for (const e of bag) {
+    let name = (typeof e === 'string' ? e : e?.name ?? e?.id ?? e?.guid ?? e?.map_name ?? '') as string;
+    if (!name || typeof name !== 'string') continue;
+    // UUID guid without name mapping — ignore (would pollute pool with "123e4567-...")
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(name)) continue;
+    // Strip prefixes and normalize
+    const norm = normalizeMapName(name);
+    if (norm) names.push(norm);
+  }
+
+  return Array.from(new Set(names));
 }
 
 /** Merges freshly observed names into the persistent observed pool. */

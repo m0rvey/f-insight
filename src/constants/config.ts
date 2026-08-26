@@ -103,6 +103,8 @@ export const BENIGN_ERROR_PATTERNS = [
 ] as const;
 
 export const MAP_POOL_CONFIG = {
+  // Active Duty 2026-01 (Valve): mirage/inferno/nuke/ancient/anubis/dust2/train
+  // Overpass removed 04.2024, Vertigo removed 01.2025, Cache not in pool since 2019
   FALLBACK_MAPS: [
     'mirage',
     'inferno',
@@ -110,9 +112,6 @@ export const MAP_POOL_CONFIG = {
     'ancient',
     'anubis',
     'dust2',
-    'vertigo',
-    'cache',
     'train',
-    'overpass',
   ] as const,
 } as const;

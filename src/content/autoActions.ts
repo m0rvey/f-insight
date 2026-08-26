@@ -13,7 +13,12 @@ export function isElementHidden(el: Element): boolean {
   if (el instanceof HTMLButtonElement && el.disabled) return true;
   if (el.getAttribute('aria-disabled') === 'true') return true;
   if (el.classList.contains('disabled')) return true;
-
+  // Cheap checks before forced reflow
+  if (el instanceof HTMLElement && el.offsetParent === null) {
+    // offsetParent null means hidden, but fixed elements also have null — fallback to rect check for those
+    const style = window.getComputedStyle(el);
+    if (style.position !== 'fixed' && style.position !== 'sticky') return true;
+  }
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return true;
   const style = window.getComputedStyle(el);

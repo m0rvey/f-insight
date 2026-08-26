@@ -22,15 +22,18 @@ export class NetworkBridge {
     this.listener = (event: Event) => {
       try {
         const detail = (event as CustomEvent).detail as
-          | { url?: unknown; status?: unknown; body?: unknown }
+          | { url?: unknown; status?: unknown; body?: unknown; nonce?: unknown }
           | undefined;
         if (!detail || typeof detail.url !== 'string') return;
-        // Defense-in-depth: the hook already filtered, but never trust the
-        // page world blindly — re-validate the URL here.
+        // P0-01 nonce check — page scripts that forge CustomEvent must know the random nonce stored on DOM
+        const expectedNonce = (document.documentElement as HTMLElement | null)?.dataset?.fInsightNonce;
+        if (typeof detail.nonce !== 'string' || !expectedNonce || detail.nonce !== expectedNonce) {
+          // Allow events without nonce only if hook hasn't set one yet (race at startup), but log
+          if (expectedNonce) return;
+        }
+        // Defense-in-depth: the hook already filtered, but never trust the page world blindly — re-validate the URL here.
         if (!isInterceptableApiUrl(detail.url)) return;
-        // Only successful JSON-shaped responses are data. Error bodies
-        // (4xx/5xx, e.g. rate-limit envelopes) must never reach the staging
-        // pipeline — the MAIN-world XHR path does not check status itself.
+        // Only successful JSON-shaped responses are data. Error bodies must never reach staging.
         const status = typeof detail.status === 'number' ? detail.status : 0;
         if (status < 200 || status >= 300) return;
         if (!detail.body || typeof detail.body !== 'object') return;

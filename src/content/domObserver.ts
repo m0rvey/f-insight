@@ -5,12 +5,26 @@ export interface PlayerElementTarget {
   playerId?: string;
 }
 
+import { DOM_CONFIG } from '../constants/config';
+
 /** Escape a class token for safe use inside a CSS selector. */
 function escapeCssIdent(token: string): string {
   return token.replace(/([^a-zA-Z0-9_\u00A0-\uFFFF-])/g, '\\$1');
 }
 
-import { DOM_CONFIG } from '../constants/config';
+// Pre-joined selector strings — avoid re-joining on every scan (D5)
+const CARD_SELECTORS = [
+  '[data-testid*="roster-player"]',
+  '[class*="RosterPlayer"]',
+  '[class*="roster-item"]',
+  '[class*="MatchTeamMember"]',
+  '[class*="TeamMember"]',
+  '[class*="PlayerContainer"]',
+  '[class*="MatchPlayer"]',
+  '[class*="Roster__Player"]',
+  '[data-testid*="team-member"]',
+] as const;
+const CARD_SELECTORS_JOINED = CARD_SELECTORS.join(', ');
 
 export class DomObserver {
   private observer: MutationObserver | null = null;
@@ -217,7 +231,7 @@ export class DomObserver {
    * exit once every nickname is found.
    */
   private scanTargetsByNicknameText(nicknames: string[], existingTargets: PlayerElementTarget[] = []): PlayerElementTarget[] {
-    const wanted = nicknames.map((raw) => ({ raw, lower: raw.toLowerCase() }));
+    const wantedMap = new Map<string, string>(nicknames.map((raw) => [raw.toLowerCase(), raw]));
     const targets: PlayerElementTarget[] = [];
     const seen = new Set<string>();
 
@@ -225,9 +239,11 @@ export class DomObserver {
       'a, span, div, p, td, th, h5, h6, [class*="nickname"], [class*="Nickname"]'
     );
 
-    for (const el of Array.from(candidates)) {
-      if (seen.size >= wanted.length) break; // everyone found — stop walking
+    for (const el of candidates) {
+      if (seen.size >= wantedMap.size) break; // everyone found — stop walking
       if (!(el instanceof HTMLElement) || !el.isConnected) continue;
+      // Never match chat bubbles — short nicks like "gg" frequently appear in chat
+      if (el.closest('[class*="chat"], [class*="Chat"], [class*="ChatMessage"]')) continue;
       // Leaf elements match their whole subtree text; containers may still
       // match via their OWN direct text nodes ("flag-icon + Nickname" cells
       // render the name next to a child icon — no leaf carries the full name).
@@ -252,9 +268,10 @@ export class DomObserver {
 
       let hit: { raw: string; lower: string } | undefined;
       for (const text of texts) {
-        const found = wanted.find((w) => w.lower === text.toLowerCase());
-        if (found) {
-          hit = found;
+        const lower = text.toLowerCase();
+        const raw = wantedMap.get(lower);
+        if (raw) {
+          hit = { raw, lower };
           break;
         }
       }
@@ -276,23 +293,9 @@ export class DomObserver {
   private scanPlayerElements(): PlayerElementTarget[] {
     const targets: PlayerElementTarget[] = [];
 
-    const cardSelectors = [
-      '[data-testid*="roster-player"]',
-      '[class*="RosterPlayer"]',
-      '[class*="roster-item"]',
-      '[class*="MatchTeamMember"]',
-      '[class*="TeamMember"]',
-      '[class*="PlayerContainer"]',
-      '[class*="MatchPlayer"]',
-      '[class*="Roster__Player"]',
-      '[data-testid*="team-member"]',
-    ];
-
     const selectors = [
-      // Learned signatures go first: they were validated against the roster,
-      // so they resolve rows the shipped class list no longer matches.
       ...this.learnedRowSelectors,
-      ...cardSelectors,
+      ...CARD_SELECTORS,
       'a[href*="/players/"]',
       'a[href*="/players-modal/"]',
     ];
@@ -300,13 +303,13 @@ export class DomObserver {
     const playerNodes = document.querySelectorAll(selectors.join(', '));
     const processedNodes = new Set<HTMLElement>();
 
-    Array.from(playerNodes).forEach((el) => {
-      if (!(el instanceof HTMLElement)) return;
+    for (const el of playerNodes) {
+      if (!(el instanceof HTMLElement)) continue;
 
-      const cardEl = el.closest(cardSelectors.join(', ')) || (el.matches(cardSelectors.join(', ')) ? el : null);
+      const cardEl = (el.closest(CARD_SELECTORS_JOINED) as HTMLElement | null) || (el.matches(CARD_SELECTORS_JOINED) ? el : null);
       const targetContainer = (cardEl instanceof HTMLElement ? cardEl : el);
 
-      if (processedNodes.has(targetContainer)) return;
+      if (processedNodes.has(targetContainer)) continue;
       processedNodes.add(targetContainer);
 
       // Extract nickname from href or inner link
@@ -345,7 +348,7 @@ export class DomObserver {
           playerId,
         });
       }
-    });
+    }
 
     return targets;
   }
@@ -434,19 +437,30 @@ export class DomObserver {
   findServerIpFromDom(): string | null {
     const steamLinks = document.querySelectorAll('a[href^="steam://connect/"]');
     for (const link of steamLinks) {
+      // Scope to match room — chat links must never be treated as server IP
+      if (link.closest('[class*="chat"], [class*="Chat"]')) continue;
       const href = link.getAttribute('href') || '';
-      const ipMatch = href.match(/steam:\/\/connect\/([a-zA-Z0-9.\-]+:\d+)/);
+      // Strict IPv4:port only — domains from chat must not be accepted
+      const ipMatch = href.match(/steam:\/\/connect\/(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})/);
       if (ipMatch && ipMatch[1]) {
         return ipMatch[1];
       }
     }
 
-    const elements = document.querySelectorAll('code, [class*="server-ip"], [data-testid*="server-ip"], [class*="quick-connect"]');
-    for (const el of elements) {
-      const text = el.textContent || '';
-      const match = text.match(/connect\s+([a-zA-Z0-9.\-]+:\d+)/i);
-      if (match && match[1]) {
-        return match[1];
+    // Only look inside match-room containers; generic <code> in chat can contain "connect evil.com:27015"
+    const roomRoots = document.querySelectorAll(
+      '[class*="MatchRoom"], [class*="match-room"], [class*="MatchReady"], [data-testid*="match-room"]'
+    );
+    const scope = roomRoots.length > 0 ? roomRoots : [document.body];
+    for (const root of Array.from(scope)) {
+      const elements = root.querySelectorAll('code, [class*="server-ip"], [data-testid*="server-ip"], [class*="quick-connect"]');
+      for (const el of elements) {
+        if (el.closest('[class*="chat"], [class*="Chat"]')) continue;
+        const text = el.textContent || '';
+        const match = text.match(/connect\s+(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})/i);
+        if (match && match[1]) {
+          return match[1];
+        }
       }
     }
 
