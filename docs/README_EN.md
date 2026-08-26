@@ -11,7 +11,7 @@
 [![Game](https://img.shields.io/badge/CS2-FACEIT%20Ready-FF5500?style=flat-square)](https://www.faceit.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](../LICENSE)
 
-[Features](#-key-features) • [Installation](#-installation--build) • [Architecture](#-architecture) • [Safety & ToS](#-safety--tos-compliance) • [Русская версия (Основная)](README.md)
+[Features](#-key-features) • [Architecture](#-architecture) • [Installation](#-installation--build) • [Safety & ToS](#-safety--tos-compliance) • [Русская версия (Основная)](README.md)
 
 </div>
 
@@ -33,6 +33,7 @@
         <li><b>Auto Ready-Up:</b> Automatically confirms check-in when match pops.</li>
         <li><b>Anti-AFK Protection:</b> Dismisses "Are you still here?" modal dialogs.</li>
         <li><b>1-Click Connect IP:</b> Instant copy of <code>connect &lt;ip:port&gt;</code> and steam URL launcher.</li>
+        <li><b>Sleep Mode:</b> The extension stays dormant outside match rooms (Extension Status toggle in the Overview tab).</li>
       </ul>
     </td>
     <td width="50%" valign="top">
@@ -41,6 +42,7 @@
         <li><b>Synergy Model:</b> Combines Base Elo, map proficiency (±12%), team momentum (±10%), and party cohesion (±8%).</li>
         <li><b>Scoreline Simulation:</b> Projects realistic match scores (e.g. <code>13 : 9</code> or <code>13 : 11 OT</code>).</li>
         <li><b>FCR (Firepower Rating):</b> Measures individual firepower and impact share.</li>
+        <li><b>Click-a-Player Flyout:</b> The detail card opens instantly even while lifetime stats are still loading — and honestly labels what is known vs. pending.</li>
       </ul>
     </td>
   </tr>
@@ -48,7 +50,7 @@
     <td width="50%" valign="top">
       <h4>🗺️ Tactical Map Veto Assistant</h4>
       <ul>
-        <li><b>CS2 Map Pool:</b> Dynamic scoring for Mirage, Inferno, Nuke, Dust2, Ancient, Anubis, Cache, Train, Overpass.</li>
+        <li><b>Self-Learning Map Pool:</b> The active CS2 pool is learned from live match traffic — the veto matrix works from the ACCEPT phase, before voting starts.</li>
         <li><b>Captains Action Plan:</b> Recommends Priority 1 Best Picks and Must Bans based on opponent winrates.</li>
         <li><b>Hotkeys:</b> Press <code>Alt + V</code> to toggle the full veto matrix overlay.</li>
       </ul>
@@ -63,6 +65,23 @@
     </td>
   </tr>
 </table>
+
+---
+
+## 🏛️ Architecture
+
+**Hybrid data channel.** The primary source is passive observation of the JSON traffic the FACEIT page loads anyway (match details, player profiles, stats): a MAIN-world hook clones responses and hands them to the extension through an isolated-world bridge. Our own API calls are a fallback only, heavily paced (minimum interval between requests, backoff on throttle signals). This keeps f-insight from consuming the domain budget that FACEIT's own UI needs — which is what used to surface as "Action Failed" errors.
+
+Key layers:
+
+| Layer | Responsibility |
+|---|---|
+| `network-hook.js` (MAIN world) | Observes api.faceit.com responses without modifying requests |
+| Content script (Shadow DOM) | SPA routing, player DOM scanning, React micro-root UI |
+| Service worker (MV3) | Analysis, TTL cache, payload parsers, automations |
+| Self-observing map pool | Learns active maps from intercepted matches — pre-veto matrix works early |
+
+Full data-flow diagrams and module contracts: [CODE_DOCUMENTATION.md](CODE_DOCUMENTATION.md).
 
 ---
 
@@ -93,7 +112,7 @@ The compiled extension will be generated inside the `dist/` directory.
 
 ## 🔒 Safety & ToS Compliance
 
-- **Non-Intrusive:** Uses public FACEIT match APIs and DOM observers without tampering with game memory or anti-cheat processes.
+- **Non-Intrusive:** Uses public FACEIT APIs, DOM observers, and read-only observation of JSON responses the page itself receives from `api.faceit.com` (requests are never modified or replayed). No game-memory or anti-cheat interaction.
 - **Zero Botting:** All actions mimic legitimate browser interactions (QoL UI enhancements only).
 - **Privacy:** Operates locally on client machine without transmitting user credentials or tokens.
 
