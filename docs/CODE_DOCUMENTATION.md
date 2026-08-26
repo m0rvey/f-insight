@@ -1,7 +1,7 @@
 # 💻 Code Documentation — f-insight
 
-> **Version:** `1.2.1` · **Last updated:** `2026-08-26` · **Tests:** `158/158` · **Build:** `tsc clean, dist rebuilt`
-> Covers `d372e21 → 68a188e` (hardening + ADR/map v2 + roles + e2e). Invariant: **intercepted traffic = PRIMARY, paced API = FALLBACK**.
+> **Version:** `1.2.1` · **Last updated:** `2026-08-27` · **Tests:** `158/158` · **Build:** `tsc clean, dist rebuilt`
+> Covers `d372e21 → f5466dc` (hardening + ADR/map v2 + roles + e2e + always-load). Invariant: **intercepted traffic = PRIMARY, paced API = FALLBACK**.
 
 This document outlines the architecture, data flows, and module contracts of `f-insight`.
 
@@ -213,3 +213,10 @@ Five consecutive `fix:` commits closed adversarial-review findings. All are cove
 - **Point 8 E2E** `tests/domObserver.e2e.test.ts:1` — 6 happy-dom snapshots: roster vs chat, anchor-less fallback, short `gg` collision, UUID, server IP strict — covers `P0-02/P1-07` without Playwright install.
 - **Tests** `146→158`, `forecastEngine` map test updated `10→7` maps, `mapPool` beforeEach clears both `maps_observed_cache` + `maps_observed_v2`.
 - **Not done per user**: pacing `400→250` (`N1`), batch `chrome.storage` (`N5`), premade clique-check (`P1-04`) — left to avoid re-introducing `Action Failed` under faster parsing.
+
+### 19. Always-Load Fix — `f5466dc` + `9c236f2` (RU room `1-a58968a9`, `Primary selectors missed 10`)
+
+- **Root cause**: `8f8d354` fix recovered 10/10 via text fallback but logged `warn` (seen as error) and cost `8-18ms` document-wide scan; `renderMainWidget` blocked on `!lobbyPayload` (loading skeleton never shown until fetch), `init` awaited `loadSettings` (SW sleep), retry `20×2000/6000` (worst 84s).
+- **Fix**: `config.ts:68` retry `20→8`, early `2000→500ms`, late `6000→2000ms` (worst 12s); `domObserver.ts:188` full recovery now `debug` (not `warn`), `scanTargetsByNicknameText` scoped to `MatchRoom/main` (`3000→200` nodes) + `wantedMap` + `chat` filter + `CARD_SELECTORS` pre-joined `for..of` (D4/D5); `domObserver.ts:115` `characterData:true` + `CARD_SELECTORS` `+role=listitem`; `contentEngine.tsx:72` `loadSettings` non-blocking, `renderMainWidget:629` skeleton even without payload (minimal `match_id` shell), host moves to correct mountPoint if found late, 3 fast `handleDomUpdate` polls `300/1000/2000ms`, SW `Receiving end` quick retry `600ms`, `findMatchHeaderMountPoint` `+Room`.
+- **Docs**: `9c236f2` removes `otherproject/` note from `docs/README.md:99` / `README_EN.md:99` Installation section per user (still in `.gitignore:5`).
+- **Tests**: `config.test.ts:34` updated `20→8`, `domObserver.test.ts:214` full recovery expects `0 warns` + `≥1 debug` (was `1 warn`).
