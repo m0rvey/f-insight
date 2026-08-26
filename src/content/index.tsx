@@ -28,6 +28,7 @@ class ContentEngine {
   private isDormant = false;
   private warnedZeroTargets = false;
   private lastInterceptHandledAt = 0;
+  private lastProfileInterceptHandledAt = 0;
   private liveMapPool: string[] | null = null;
   private isLoading: boolean = false;
   private isVisible: boolean = true;
@@ -421,7 +422,35 @@ class ContentEngine {
   private handleInterceptedTraffic(p: InterceptedNetPayload) {
     if (this.isDormant) return;
     const matchId = extractMatchIdFromInterceptedUrl(p.url);
-    if (!matchId || matchId !== this.currentMatchId) return;
+
+    if (!matchId) {
+      // Player-profile payloads (users / stats / recent matches): forward so
+      // the background can stage + hydrate `player_stats:*` from page traffic
+      // — zero own requests. A short debounce absorbs click bursts.
+      const now = Date.now();
+      if (now - this.lastProfileInterceptHandledAt < 800) return;
+      this.lastProfileInterceptHandledAt = now;
+      chrome.runtime
+        .sendMessage({
+          type: 'INTERCEPTED_MATCH_PAYLOAD',
+          payload: { body: p.body, url: p.url },
+        })
+        .then((res: any) => {
+          // Hydrated cache entries are read by the next lobby fetch.
+          if (
+            res?.success &&
+            res.data?.kind === 'profile-hydrated' &&
+            this.currentMatchId &&
+            !this.isLoading
+          ) {
+            this.fetchLobbyData(this.currentMatchId, false).catch(() => {});
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
+    if (matchId !== this.currentMatchId) return;
 
     // Debounce bursts: SPA transitions can fire several match fetches quickly
     const now = Date.now();

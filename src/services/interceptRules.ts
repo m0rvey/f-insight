@@ -30,3 +30,32 @@ export function extractMatchIdFromInterceptedUrl(url: string): string | null {
   const match = url.match(/\/api\/match\/v2\/match\/([a-zA-Z0-9\-]+)/);
   return match ? match[1] : null;
 }
+
+export type InterceptedProfileKind = 'user' | 'stats' | 'time';
+
+/**
+ * Classifies an intercepted player-profile URL. Returns which payload shape
+ * the body carries and the playerId it belongs to, or null for non-profile
+ * URLs (match details etc.). Player ids on these endpoints are FACEIT GUIDs;
+ * nicknames are accepted defensively but validated downstream.
+ */
+export function classifyInterceptedProfileUrl(
+  url: string
+): { kind: InterceptedProfileKind; playerId: string } | null {
+  const patterns: [RegExp, InterceptedProfileKind][] = [
+    [/\/users\/v1\/users\/([^/?#]+)/, 'user'],
+    [/\/stats\/v1\/stats\/users\/([^/?#]+)\/games\/cs2/, 'stats'],
+    [/\/stats\/v1\/stats\/time\/users\/([^/?#]+)\/games\/cs2/, 'time'],
+  ];
+  for (const [re, kind] of patterns) {
+    const m = url.match(re);
+    if (m && m[1]) {
+      const playerId = decodeURIComponent(m[1]);
+      // Same charset the background validates everywhere else.
+      if (/^[a-zA-Z0-9.\-_]{1,64}$/.test(playerId)) {
+        return { kind, playerId };
+      }
+    }
+  }
+  return null;
+}

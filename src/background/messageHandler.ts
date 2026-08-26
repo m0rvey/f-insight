@@ -5,10 +5,11 @@ import {
 } from '../types/messages';
 import { ExtensionSettings, DEFAULT_SETTINGS } from '../types/settings';
 import { cacheManager, TTL, SETTINGS_KEY } from '../services/cacheManager';
-import { faceitApi, parseMatchPayload } from '../services/faceitApi';
+import { faceitApi, parseMatchPayload, buildStatsFromInterceptedParts } from '../services/faceitApi';
 import { steamApi } from '../services/steamApi';
 import { calculateRiskScore } from '../services/riskScorer';
 import { detectPremades } from '../services/premadeDetector';
+import { classifyInterceptedProfileUrl, InterceptedProfileKind } from '../services/interceptRules';
 import {
   calculateTeamFcr,
   calculateAdvancedMatchPrediction,
@@ -103,15 +104,21 @@ export class BackgroundMessageHandler {
   }
 
   /**
-   * Consumes a match payload intercepted from FACEIT's own page traffic.
-   * Parsed details are cached under `intercepted_match:*` — getMatchDetails
-   * serves that cache first, so the regular analysis flow runs without
-   * spending any of our api.faceit.com request budget.
+   * Consumes a payload intercepted from FACEIT's own page traffic.
+   * Two kinds share this channel:
+   *  - match details (`matchId` present) → cached under `intercepted_match:*`
+   *  - player-profile payloads (users / lifetime stats / recent matches for a
+   *    single player) → staged per-player and composed into a
+   *    `player_stats:*` cache entry via parsePlayerPayload, so lobby analysis
+   *    hydrates KD/Elo/maps WITHOUT spending any of our request budget.
    */
   private async handleInterceptedMatchPayload(payload: any): Promise<MessageResponse> {
     try {
       const matchId = typeof payload?.matchId === 'string' ? payload.matchId : '';
-      if (!matchId || !/^[a-zA-Z0-9\-_]+$/.test(matchId)) {
+      if (!matchId) {
+        return await this.handleInterceptedProfilePayload(payload);
+      }
+      if (!/^[a-zA-Z0-9\-_]+$/.test(matchId)) {
         return { success: false, error: 'Invalid intercepted matchId' };
       }
       if (!payload?.body || typeof payload.body !== 'object') {
@@ -127,6 +134,78 @@ export class BackgroundMessageHandler {
       console.warn('[f-insight:Background] Intercepted match payload rejected:', err?.message || err);
       return { success: false, error: err?.message || 'Intercepted payload parse failed' };
     }
+  }
+
+  /**
+   * Stages an intercepted player-profile payload (users / stats / time).
+   * Parts accumulate per player across page clicks (short TTL), and every new
+   * part recomposes the best-known FaceitPlayerFullStats into the standard
+   * `player_stats:*` cache — exactly what streamLobbyData reads, so badges
+   * and the flyout hydrate from page traffic with zero own requests.
+   */
+  private async handleInterceptedProfilePayload(payload: any): Promise<MessageResponse> {
+    const url = typeof payload?.url === 'string' ? payload.url : '';
+    const classified = classifyInterceptedProfileUrl(url);
+    if (!classified) {
+      return { success: false, error: 'Unrecognized intercepted URL' };
+    }
+    if (!payload?.body || typeof payload.body !== 'object') {
+      return { success: false, error: 'Invalid intercepted profile body' };
+    }
+    const { kind, playerId }: { kind: InterceptedProfileKind; playerId: string } = classified;
+
+    // Unwrap FACEIT's { payload: ... } envelope where present.
+    const raw = (payload.body as { payload?: unknown }).payload ?? payload.body;
+
+    const stageKey = `intercept_profile:${playerId}`;
+    const staged =
+      (await cacheManager.get<{ user?: any; stats?: any; time?: any[] }>(stageKey)) || {};
+
+    let accepted = false;
+    if (kind === 'user' && raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      staged.user = raw;
+      accepted = true;
+    } else if (kind === 'stats' && raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      staged.stats = raw;
+      accepted = true;
+    } else if (kind === 'time') {
+      const arr = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as any)?.items)
+          ? (raw as any).items
+          : null;
+      if (arr && arr.length > 0) {
+        staged.time = arr;
+        accepted = true;
+      }
+    }
+    if (!accepted) {
+      return { success: false, error: `Intercepted ${kind} payload had no usable shape` };
+    }
+
+    // Short staging window: parts only make sense together with a live room.
+    await cacheManager.set(stageKey, staged, TTL.NEGATIVE * 3);
+
+    const composed = buildStatsFromInterceptedParts(playerId, staged);
+    if (!composed) {
+      return { success: true, data: { kind: 'profile-staged', playerId } };
+    }
+    await cacheManager.set(
+      `player_stats:${playerId}`,
+      composed,
+      composed.statsAvailable === false ? TTL.NEGATIVE : TTL.PLAYER_STATS
+    );
+    console.warn(
+      `[f-insight:Background] Hydrated player ${playerId} from intercepted ${kind} payload (statsAvailable=${composed.statsAvailable !== false})`
+    );
+    return {
+      success: true,
+      data: {
+        kind: 'profile-hydrated',
+        playerId,
+        statsAvailable: composed.statsAvailable !== false,
+      },
+    };
   }
 
   private async handleSaveSettings(payload: any): Promise<MessageResponse> {
@@ -218,11 +297,13 @@ export class BackgroundMessageHandler {
     const steamData: Record<string, SteamFullData> = {};
     const riskAnalysis: Record<string, RiskAnalysisResult> = {};
 
-    // Fetch all players with bounded concurrency (3 workers + small delay between
-    // requests) to avoid rate-limiting api.faceit.com with a 20-request burst.
+    // Fetch all players with bounded concurrency (2 workers + generous delay
+    // between players). Combined with the 400 ms request gate this keeps the
+    // full 10-player lobby analysis at ~1 request / 400 ms — gentle enough
+    // that FACEIT's own UI requests (player-modal clicks!) keep their budget.
     await mapWithConcurrency(
       allPlayers,
-      3,
+      2,
       async (player) => {
         const pId = player.player_id;
         if (!pId) return;
@@ -281,7 +362,7 @@ export class BackgroundMessageHandler {
           });
         }
       },
-      200
+      400
     );
 
     // Calculate Team Elo and Probabilities

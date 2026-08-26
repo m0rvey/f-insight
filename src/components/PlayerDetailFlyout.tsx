@@ -241,12 +241,12 @@ export const PlayerDetailFlyout: React.FC<PlayerDetailFlyoutProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1 flex-shrink-0 animate-pulse" />
               <div>
                 <div className="text-[11px] font-bold text-amber-300">
-                  Lifetime stats unavailable
+                  Partial stats
                 </div>
                 <p className="text-[10px] text-zinc-300 mt-0.5 leading-relaxed">
-                  Showing roster basics only (nickname, Elo, level). FACEIT stats
-                  endpoints are still loading or were rate-limited — the full
-                  analysis fills in automatically once data arrives.
+                  {(stats.recentMatches?.length || 0) > 0
+                    ? 'Built from page traffic (last matches) — lifetime aggregates are still loading or were rate-limited. Full data fills in automatically.'
+                    : 'Showing roster basics only (nickname, Elo, level). FACEIT stats endpoints are still loading or were rate-limited — the full analysis fills in automatically once data arrives.'}
                 </p>
               </div>
             </div>

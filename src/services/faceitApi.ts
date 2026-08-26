@@ -282,7 +282,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
  * it as "Action Failed" errors on almost every user action. Every request we
  * make therefore queues here and starts at least MIN_INTERVAL apart.
  */
-const FACEIT_MIN_REQUEST_INTERVAL_MS = 120;
+const FACEIT_MIN_REQUEST_INTERVAL_MS = 400;
 let lastFaceitRequestAt = 0;
 let faceitQueueTail: Promise<unknown> = Promise.resolve();
 
@@ -300,14 +300,21 @@ function pacedFaceitFetch(url: string, timeoutMs: number): Promise<Response> {
 
 /**
  * Paced GET against api.faceit.com with a single backoff retry on throttle
- * responses (429/503). Hammering a throttled endpoint only extends the ban,
- * so we retreat once and then give up gracefully.
+ * responses (429/503/403). Hammering a throttled endpoint only extends the
+ * ban, so we retreat once, inject a cooldown into the shared gate and then
+ * give up gracefully — callers treat failures as missing data.
  */
 async function pacedFaceitRequest(url: string, timeoutMs = 8000): Promise<Response> {
   let res = await pacedFaceitFetch(url, timeoutMs);
   if (res.status === 429 || res.status === 503 || res.status === 403) {
     console.warn(`[f-insight:FaceitApi] HTTP ${res.status} from ${new URL(url).pathname} — backing off once`);
-    await sleep(1400 + Math.floor(Math.random() * 600));
+    // Cooldown: push the shared gate into the future so every queued request
+    // (ours AND the lobby stream's next players) waits out the throttle window
+    // instead of re-impaling immediately. This protects FACEIT's own UI
+    // budget too — its "Action Failed" toast is what a domain-wide ban
+    // looks like from the inside.
+    lastFaceitRequestAt = Date.now() + 2000;
+    await sleep(2500 + Math.floor(Math.random() * 2000));
     try {
       res = await pacedFaceitFetch(url, timeoutMs);
     } catch {
@@ -432,6 +439,33 @@ export class FaceitApiService {
       return null;
     }
   }
+}
+
+/**
+ * Compose FaceitPlayerFullStats from payloads the page itself loaded
+ * (intercepted by the MAIN-world hook). Accepts ANY subset — whatever the
+ * SPA happened to fetch. Missing pieces degrade exactly like the own-API
+ * path: `parsePlayerPayload` already implements the Data Availability
+ * Contract, so a users-only snapshot yields statsAvailable:false with real
+ * Elo/level/nickname, while user+stats+time yields a fully hydrated card.
+ */
+export function buildStatsFromInterceptedParts(
+  playerId: string,
+  parts: { user?: any; stats?: any; time?: any[] }
+): FaceitPlayerFullStats | null {
+  const hasAnything =
+    parts.user !== undefined ||
+    parts.stats !== undefined ||
+    (Array.isArray(parts.time) && parts.time.length > 0);
+  if (!hasAnything) return null;
+  return parsePlayerPayload(
+    playerId,
+    undefined,
+    parts.user ?? null,
+    parts.stats ?? null,
+    null,
+    Array.isArray(parts.time) ? parts.time : []
+  );
 }
 
 const MATCH_STATUSES: MatchStatus[] = ['VOTING', 'CONFIGURING', 'READY', 'ON_GOING', 'CANCELLED', 'FINISHED'];
