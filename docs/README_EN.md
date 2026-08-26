@@ -68,7 +68,7 @@
 
 ---
 
-## 🏛️ Architecture
+## 🧱 Architecture
 
 **Hybrid data channel.** The primary source is passive observation of the JSON traffic the FACEIT page loads anyway (match details, player profiles, stats): a MAIN-world hook clones responses and hands them to the extension through an isolated-world bridge. Our own API calls are a fallback only, heavily paced (minimum interval between requests, backoff on throttle signals). This keeps f-insight from consuming the domain budget that FACEIT's own UI needs — which is what used to surface as "Action Failed" errors.
 
@@ -85,7 +85,7 @@ Full data-flow diagrams and module contracts: [CODE_DOCUMENTATION.md](CODE_DOCUM
 
 ---
 
-## 🛠️ Installation & Build
+## 📦 Installation & Build
 
 ### Quick way — no Node.js required
 
