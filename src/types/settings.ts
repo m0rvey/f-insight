@@ -2,7 +2,6 @@ export interface ExtensionSettings {
   enableRedFlags: boolean;
   enableVetoHelper: boolean;
   enablePremadeDetection: boolean;
-  enableFloatingControls: boolean;
   compactMode: boolean;
   /**
    * Full dormancy outside match rooms: when enabled, the extension does not
@@ -28,7 +27,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   enableRedFlags: true,
   enableVetoHelper: true,
   enablePremadeDetection: true,
-  enableFloatingControls: true,
   compactMode: false,
   disableOnHomeScreen: false,
   // Automation defaults

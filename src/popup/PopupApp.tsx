@@ -113,7 +113,6 @@ export const PopupApp: React.FC = () => {
     settings.enableRedFlags,
     settings.enableVetoHelper,
     settings.enablePremadeDetection,
-    settings.enableFloatingControls,
     settings.compactMode,
     settings.showFcrRating,
     settings.showFormIndicators,
@@ -274,11 +273,29 @@ export const PopupApp: React.FC = () => {
                 <div>
                   <div className="font-bold text-xs text-white">Some Modules Disabled</div>
                   <p className="text-[11px] text-zinc-300 mt-0.5">
-                    Enabled: {enabledCount} / 15 modules
+                    Enabled: {enabledCount} / 14 toggles
                   </p>
                 </div>
               </div>
             )}
+
+            {/* Extension Status */}
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-faceit-muted px-0.5 mb-1.5">
+                Extension Status
+              </div>
+              <SettingToggle
+                title="Disable on FACEIT Homepage"
+                description="Sleeps everywhere except match rooms — zero DOM scanning and no automations outside /room pages"
+                icon={Home}
+                iconColorClass="text-rose-400"
+                checked={settings.disableOnHomeScreen}
+                onChange={(val) => {
+                  setSettings({ ...settings, disableOnHomeScreen: val });
+                  handleSaveSettings({ disableOnHomeScreen: val });
+                }}
+              />
+            </div>
 
             {/* Feature Status Grid */}
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -423,17 +440,6 @@ export const PopupApp: React.FC = () => {
         {activeTab === 'modules' && (
           <div className="space-y-2">
             <SettingToggle
-              title="Disable on FACEIT Homepage"
-              description="Sleeps everywhere except match rooms — zero DOM scanning and no automations outside /room pages"
-              icon={Home}
-              iconColorClass="text-rose-400"
-              checked={settings.disableOnHomeScreen}
-              onChange={(val) => {
-                setSettings({ ...settings, disableOnHomeScreen: val });
-                handleSaveSettings({ disableOnHomeScreen: val });
-              }}
-            />
-            <SettingToggle
               title="Smurf & Risk Detector"
               variant="simple"
               checked={settings.enableRedFlags}
@@ -476,15 +482,6 @@ export const PopupApp: React.FC = () => {
               onChange={(val) => {
                 setSettings({ ...settings, showFormIndicators: val });
                 handleSaveSettings({ showFormIndicators: val });
-              }}
-            />
-            <SettingToggle
-              title="Floating Action Button HUD"
-              variant="simple"
-              checked={settings.enableFloatingControls}
-              onChange={(val) => {
-                setSettings({ ...settings, enableFloatingControls: val });
-                handleSaveSettings({ enableFloatingControls: val });
               }}
             />
           </div>
