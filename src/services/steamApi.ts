@@ -1,4 +1,5 @@
 import { SteamFullData, SteamPlayerSummary, SteamBanStatus } from '../types/steam';
+import { STEAM_CONFIG } from '../constants/config';
 
 export function parseSteamProfileXml(xmlText: string, steamId64: string): SteamFullData {
   const isPrivate = !xmlText.includes('<privacyState>public</privacyState>');
@@ -73,7 +74,7 @@ export function parseSteamProfileXml(xmlText: string, steamId64: string): SteamF
   };
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 6000): Promise<Response> {
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = STEAM_CONFIG.REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -87,7 +88,7 @@ export class SteamApiService {
   private inFlightSteam = new Map<string, Promise<SteamFullData>>();
 
   async getPlayerFullData(steamId64: string): Promise<SteamFullData> {
-    if (!steamId64 || !/^\d{5,25}$/.test(steamId64)) {
+    if (!steamId64 || !STEAM_CONFIG.STEAM_ID_PATTERN.test(steamId64)) {
       // Invalid / missing ID means "no data", NOT a private profile: marking it
       // isPrivate:true would add smurf-risk flags for a malformed input and the
       // result would be cached for 24h (fetchError bypasses caching upstream).

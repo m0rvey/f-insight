@@ -8,7 +8,10 @@
     "build": "tsc && node scripts/build.js",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:versions": "node scripts/check-versions.js",
+    "check:docs": "node scripts/check-docs-sync.js",
+    "check:dist": "npm run build && git diff --exit-code dist/"
   },
   "keywords": [
     "faceit",

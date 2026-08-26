@@ -18,37 +18,8 @@ import {
 import { FaceitPlayerFullStats } from '../types/faceit';
 import { SteamFullData } from '../types/steam';
 import { RiskAnalysisResult } from '../types/risk';
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/**
- * Runs async work over a list with a limited number of concurrent workers.
- * A small delay after each item smooths the request burst so we never trip
- * Cloudflare rate-limits on api.faceit.com (FACEIT's own page requests —
- * player popovers/profiles — fail with "Action Failed" when the domain is
- * throttled).
- */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-  delayMs = 150
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-      if (delayMs > 0) await sleep(delayMs);
-    }
-  };
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
-  await Promise.all(workers);
-  return results;
-}
+import { CACHE_CONFIG, FACEIT_CONFIG, LOBBY_CONFIG } from '../constants/config';
+import { mapWithConcurrency } from '../utils/concurrency';
 
 export class BackgroundMessageHandler {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
@@ -121,7 +92,7 @@ export class BackgroundMessageHandler {
       if (!matchId) {
         return await this.handleInterceptedProfilePayload(payload);
       }
-      if (!/^[a-zA-Z0-9\-_]+$/.test(matchId)) {
+      if (!FACEIT_CONFIG.ROOM_ID_PATTERN.test(matchId)) {
         return { success: false, error: 'Invalid intercepted matchId' };
       }
       if (!payload?.body || typeof payload.body !== 'object') {
@@ -200,7 +171,7 @@ export class BackgroundMessageHandler {
     }
 
     // Short staging window: parts only make sense together with a live room.
-    await cacheManager.set(stageKey, staged, TTL.NEGATIVE * 3);
+    await cacheManager.set(stageKey, staged, TTL.NEGATIVE * CACHE_CONFIG.TTL.INTERCEPT_STAGE_FACTOR);
 
     const composed = buildStatsFromInterceptedParts(playerId, staged);
     if (!composed) {
@@ -331,13 +302,13 @@ export class BackgroundMessageHandler {
     const steamData: Record<string, SteamFullData> = {};
     const riskAnalysis: Record<string, RiskAnalysisResult> = {};
 
-    // Fetch all players with bounded concurrency (2 workers + generous delay
+    // Fetch all players with bounded concurrency (LOBBY_CONFIG.CONCURRENCY workers + generous delay
     // between players). Combined with the 400 ms request gate this keeps the
     // full 10-player lobby analysis at ~1 request / 400 ms — gentle enough
     // that FACEIT's own UI requests (player-modal clicks!) keep their budget.
     await mapWithConcurrency(
       allPlayers,
-      2,
+      LOBBY_CONFIG.CONCURRENCY,
       async (player) => {
         const pId = player.player_id;
         if (!pId) return;
@@ -408,7 +379,7 @@ export class BackgroundMessageHandler {
           });
         }
       },
-      400
+      LOBBY_CONFIG.CONCURRENCY_DELAY_MS
     );
 
     // Calculate Team Elo and Probabilities

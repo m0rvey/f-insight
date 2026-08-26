@@ -1,6 +1,7 @@
 import { ExtensionSettings } from '../types/settings';
 import { MapVetoRankItem } from '../services/forecastEngine';
 import { MatchStatus } from '../types/faceit';
+import { AUTO_ACTION_CONFIG } from '../constants/config';
 
 export type AutoActionKind = 'ready' | 'party' | 'afk' | 'queue' | 'captain' | 'veto' | 'server';
 
@@ -56,11 +57,11 @@ export class AutoActionsEngine {
   private lastClickTime = 0;
   private lastClickByAction: Map<AutoActionKind, number> = new Map();
   private lastEngineClickAt = 0;
-  private readonly globalClickGapMs = 1500;
+  private readonly globalClickGapMs = AUTO_ACTION_CONFIG.GLOBAL_CLICK_GAP_MS;
   private hasCopiedServerIp = false;
   private vetoClickCount = 0;
   private lastUserActivity = 0;
-  private readonly userActivityLockMs = 3000;
+  private readonly userActivityLockMs = AUTO_ACTION_CONFIG.USER_ACTIVITY_LOCK_MS;
 
   public resetForNewMatch() {
     this.lastClickedButton = null;
@@ -82,7 +83,7 @@ export class AutoActionsEngine {
   }
 
   private canClick(kind: AutoActionKind, el: Element, cooldownMs: number): boolean {
-    if (this.lastClickedButton === el && Date.now() - this.lastClickTime < 5000) return false;
+    if (this.lastClickedButton === el && Date.now() - this.lastClickTime < AUTO_ACTION_CONFIG.SAME_BUTTON_COOLDOWN_MS) return false;
     const last = this.lastClickByAction.get(kind) || 0;
     if (Date.now() - last < cooldownMs) return false;
     return true;
@@ -96,7 +97,7 @@ export class AutoActionsEngine {
     this.lastClickByAction.set(kind, now);
   }
 
-  private clickElementSafely(el: Element, kind: AutoActionKind, actionLabel: string, cooldownMs = 2000): boolean {
+  private clickElementSafely(el: Element, kind: AutoActionKind, actionLabel: string, cooldownMs: number = AUTO_ACTION_CONFIG.DEFAULT_COOLDOWN_MS): boolean {
     // Global inter-click gap: never fire two different automations within a
     // short window — rapid back-to-back synthetic clicks read as bot behavior
     // and make FACEIT reject them with "Action Failed".
@@ -204,7 +205,7 @@ export class AutoActionsEngine {
       // at a player profile and a stale ready-click there triggers "Action Failed".
       if (el.closest('[role="dialog"], [class*="popover"], [class*="Popover"], [class*="modal"], [class*="Modal"]')) continue;
 
-      if (this.clickElementSafely(el, 'ready', `Auto-Ready ("${rawText}")`, 5000)) {
+      if (this.clickElementSafely(el, 'ready', `Auto-Ready ("${rawText}")`, AUTO_ACTION_CONFIG.READY_COOLDOWN_MS)) {
         break;
       }
     }
@@ -364,7 +365,7 @@ export class AutoActionsEngine {
 
       const text = (mapContainer.textContent || btn.textContent || '').toLowerCase();
       if (text.includes(worstMap.mapName)) {
-        if (this.clickElementSafely(btn, 'veto', `Auto-Veto Ban for ${worstMap.mapName}`, 8000)) {
+        if (this.clickElementSafely(btn, 'veto', `Auto-Veto Ban for ${worstMap.mapName}`, AUTO_ACTION_CONFIG.VETO_COOLDOWN_MS)) {
           this.vetoClickCount++;
         }
         break;

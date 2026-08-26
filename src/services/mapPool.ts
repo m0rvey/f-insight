@@ -10,23 +10,13 @@
  * every future room's pre-veto matrix smarter — zero requests of our own.
  */
 import { cacheManager } from './cacheManager';
+import { CACHE_CONFIG, MAP_POOL_CONFIG } from '../constants/config';
 
 const OBSERVED_CACHE_KEY = 'maps_observed_cache';
-const OBSERVED_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const OBSERVED_TTL = CACHE_CONFIG.TTL.OBSERVED_MAPS_MS;
 
 /** Mirrors forecastEngine's DEFAULT_CS2_MAPS — baseline/fallback pool. */
-export const FALLBACK_CS2_MAPS = [
-  'mirage',
-  'inferno',
-  'nuke',
-  'ancient',
-  'anubis',
-  'dust2',
-  'vertigo',
-  'cache',
-  'train',
-  'overpass',
-];
+export const FALLBACK_CS2_MAPS = [...MAP_POOL_CONFIG.FALLBACK_MAPS] as string[];
 
 export interface MapPoolResult {
   maps: string[];

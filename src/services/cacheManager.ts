@@ -4,18 +4,20 @@ interface CacheEntry<T> {
   ttlMs: number;
 }
 
+import { CACHE_CONFIG } from '../constants/config';
+
 export const TTL = {
-  MATCH: 3 * 60 * 1000,        // 3 minutes
-  PLAYER_STATS: 60 * 60 * 1000, // 1 hour (Aggressive caching)
-  STEAM_PROFILE: 24 * 60 * 60 * 1000, // 24 hours
-  NEGATIVE: 3 * 60 * 1000,     // 3 minutes for failed / unreachable queries
-  SETTINGS: Number.MAX_SAFE_INTEGER,
+  MATCH: CACHE_CONFIG.TTL.MATCH_MS,
+  PLAYER_STATS: CACHE_CONFIG.TTL.PLAYER_STATS_MS,
+  STEAM_PROFILE: CACHE_CONFIG.TTL.STEAM_PROFILE_MS,
+  NEGATIVE: CACHE_CONFIG.TTL.NEGATIVE_MS,
+  SETTINGS: CACHE_CONFIG.TTL.SETTINGS_MS,
 } as const;
 
 /** Reserved key that survives cache eviction and clear() operations. */
 export const SETTINGS_KEY = 'settings';
 
-const MAX_MEMORY_ENTRIES = 500;
+const MAX_MEMORY_ENTRIES = CACHE_CONFIG.MAX_MEMORY_ENTRIES;
 
 class CacheManager {
   private memoryCache: Map<string, CacheEntry<unknown>> = new Map();

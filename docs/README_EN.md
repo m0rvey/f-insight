@@ -1,3 +1,4 @@
+<!-- SYNC-NOTE: EN translation of docs/README.md — keep features/architecture/install sections in sync. See CONTRIBUTING.md. -->
 <div align="center">
 
 # ⚡ f-insight
@@ -89,11 +90,13 @@ Full data-flow diagrams and module contracts: [CODE_DOCUMENTATION.md](CODE_DOCUM
 
 ### Quick way — no Node.js required
 
-A prebuilt bundle is already committed in the [`dist/`](../dist/) folder:
+A prebuilt bundle is already committed in the [`dist/`](../dist/) folder — **intentionally tracked** (exception to `GIT_AND_RELEASES.md:48`, see `.gitignore:11`). No `npm` needed for players:
 
 1. Download the ZIP of the `main` branch (**Code → Download ZIP**) and extract it to a simple path without spaces or non-ASCII characters, e.g. `C:\f-insight`.
 2. Open `chrome://extensions/` → enable **Developer mode** → **Load unpacked** → select the `dist` folder.
 3. After an extension update, press **Reload** on its card (same folder) — or remove and re-add it if you extracted to a new location.
+
+> `otherproject/` — local references to other extensions for studying original solutions. Ignored via `.gitignore:5` and never committed, kept locally for dev convenience.
 
 ### Build from source
 

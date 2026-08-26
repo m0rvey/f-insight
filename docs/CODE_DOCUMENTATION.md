@@ -1,5 +1,8 @@
 # 💻 Code Documentation — f-insight
 
+> **Version:** `1.2.1` · **Last updated:** `2026-08-26` · **Tests:** `136/136` · **Build:** `tsc clean, dist rebuilt`
+> Covers hardening sprint `d372e21 → 8f8d354`. Invariant: **intercepted traffic = PRIMARY, paced API = FALLBACK**.
+
 This document outlines the architecture, data flows, and module contracts of `f-insight`.
 
 ---
@@ -167,3 +170,28 @@ The parser distinguishes **"unknown data"** from **"zero values"**: when the FAC
 - **Orphan host sweep**: `-locN` occurrence ordinals depend on scan order; after FACEIT reorders its DOM a container could keep an orphaned shadow host under the OLD id, rendering as a phantom 6 px gap while a duplicate host appeared beside it. Host creation now sweeps stale `:scope > [id^="f-insight-player-"]` siblings first.
 - **Hydration downgrade guard**: `streamLobbyData(forceRefresh)` no longer lets a throttled own fetch overwrite a good cached snapshot — e.g. one hydrated from intercepted traffic seconds earlier — with the fabricated `statsAvailable: false` object that `getPlayerStats` returns on failed endpoints. Fresh data is accepted only when it is at least as complete as the cached entry; otherwise the better entry is kept and broadcast.
 - **README navigation**: all section anchors validated against GitHub's slug algorithm (the "Architecture" anchor used to point at a section that did not exist); both READMEs gained an Architecture section, refreshed feature lists, and a no-Node quick-install path (the repo ships a prebuilt `dist/`, so `npm install && npm run build` is optional; self-build requires Node ≥ 18 for Vite 6).
+
+### 15. Hardening Sprint 2026-08-26 — adversarial fixes (d372e21 → 8f8d354)
+
+Five consecutive `fix:` commits closed adversarial-review findings. All are covered by tests (136/136).
+
+- **`d372e21` — robust ADR & badge strip**: per-match ADR parser now prefers named stats object (`ADR`, `Headshots %`) plausibility-checked, then falls back to `c`-columns with cross-check against independent `HS%` via `i9/kills` anchor — swapped columns are rescued, implausible values stay `undefined` per Data Availability Contract. When lifetime `ADR` aggregate is absent, overall ADR is approximated matches-weighted from real per-map segments. Badge tiles fused into one seamless strip with `last N matches` footer; redundant `30M` label suffix removed.
+
+- **`bab925a` — tiered identity resolution**: flat candidate pool replaced with trust tiers `auth keys+JWT > DOM navbar > live traffic > storage sweep`. A tier resolves only when it matches **exactly one** distinct roster player (`ambiguity rejection`); ambiguous tiers are skipped with `console.debug` note, lower tiers consulted afterwards. Per-link `decodeURIComponent` errors no longer abort whole DOM pass. Fixes P0 polluted `selfCandidate` (clicking any player previously flipped veto perspective) and P1 stale storage blobs.
+
+- **`7db1d38` — streaming & bridge hardening**: `FETCH_LOBBY_INSIGHT` now registers tab as `streamSubscribers` **before** cache check (cached tabs no longer miss `PLAYER_STATS_UPDATE`). `forceRefresh` streams are generation-tagged — superseded streams stay fully silent (no broadcasts, no stale `match_analysis` cache overwrite). `netBridge.ts` drops non-2xx and non-object bodies at isolated-world boundary (5 tests). Residual: `CustomEvent` channel is inherently forgeable — documented as display-poisoning only.
+
+- **`7dcec38` — self-healing roster scan & RO-loop guard**: `domObserver.ts` learns validated row-container signatures after full-roster text-fallback recovery; later scans use cheap learned selectors instead of document-wide nickname walk. Redesign-recovery warning fires once per distinct recovery, repeats downgrade to `console.debug`. Content `0/N player rows located` warns only after 3 failed attempts (payload-beats-render race is normal); zero-target retry counter advances only when a new retry is scheduled (previously burned 20 attempts in seconds). Benign `ResizeObserver loop` noise filtered; `PlayerRadarChart` defers size writes one frame past observer notification.
+
+- **`8f8d354` — URL guard against stale-payload renders**: `interceptRules.ts:extractRoomIdFromPageUrl()` is the single shared `/room/<id>` parser (`spaWatcher.ts` delegates to it). `ContentEngine:isStillOnMatchPage()` compares live `window.location` room id against `currentMatchId`; enforced in `handleDomUpdate`, `renderPlayerBadges`, `renderMainWidget` — closes SPA race where `currentMatchId + lobbyPayload` briefly outlive room markup and render against next route (`/play`) where roster rows can never exist.
+
+> **Invariant preserved:** `intercepted traffic = PRIMARY`, own paced `api.faceit.com` = FALLBACK ONLY. `FACEIT_MIN_REQUEST_INTERVAL_MS=400`, lobby pool `2 workers × 400 ms`, backoff `2 s` cooldown into shared gate.
+
+### 16. Modularization & Config (2026-08-26 refactoring)
+
+- **`src/constants/config.ts`** — single source for all magic numbers (`FACEIT_CONFIG`, `CACHE_CONFIG`, `LOBBY_CONFIG`, `DOM_CONFIG`, `CONTENT_CONFIG`, `AUTO_ACTION_CONFIG`, `INTERCEPT_CONFIG`). Modules no longer hard-code `400`, `60`, `500` etc.
+- **`src/services/faceitParser.ts`** — pure parsers `parsePlayerPayload` / `parseMatchPayload` / `buildStatsFromInterceptedParts` extracted from `faceitApi.ts` (now 145 lines vs 603). `faceitApi.ts` keeps only pacing + network + re-exports for backward compat (`tests/faceitApi.test.ts` still imports from `faceitApi`).
+- **`src/utils/concurrency.ts`** — `mapWithConcurrency` + `sleep` extracted from `BackgroundMessageHandler`; `messageHandler.ts` imports it and uses `LOBBY_CONFIG` constants.
+- **`src/content/contentEngine.tsx`** — `ContentEngine` (1034 → ~1030 lines) extracted from `src/content/index.tsx`; `index.tsx` is now a 4-line bootstrap (`new ContentEngine().init()`), keeping the Vite `iife` entry clean.
+- **`otherproject/`** — explicitly documented in `.gitignore:5` as local references for studying original implementations, never committed.
+- **`dist/`** — intentionally tracked (exception to `GIT_AND_RELEASES.md:48`), see `.gitignore:11` and `docs/README.md: Quick way`. CI verifies sync via `git diff --exit-code dist/` after `npm run build`.

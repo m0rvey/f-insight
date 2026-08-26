@@ -10,11 +10,13 @@ function escapeCssIdent(token: string): string {
   return token.replace(/([^a-zA-Z0-9_\u00A0-\uFFFF-])/g, '\\$1');
 }
 
+import { DOM_CONFIG } from '../constants/config';
+
 export class DomObserver {
   private observer: MutationObserver | null = null;
   private timeoutId: number | null = null;
   private lastRunTime = 0;
-  private readonly THROTTLE_MS = 60; // 60ms throttle for 60fps smoothness
+  private readonly THROTTLE_MS = DOM_CONFIG.THROTTLE_MS;
 
   // Caching: avoid re-scanning the whole page on every observer tick
   private cachedTargets: PlayerElementTarget[] | null = null;

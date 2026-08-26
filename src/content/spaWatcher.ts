@@ -1,4 +1,5 @@
 import { extractRoomIdFromPageUrl } from '../services/interceptRules';
+import { DOM_CONFIG } from '../constants/config';
 
 export type UrlChangeCallback = (url: string, matchId: string | null) => void;
 
@@ -63,7 +64,7 @@ export class SpaWatcher {
       if (window.location.href !== this.currentUrl) {
         this.checkUrl();
       }
-    }, 500);
+    }, DOM_CONFIG.POLL_INTERVAL_MS);
   }
 
   public stop() {

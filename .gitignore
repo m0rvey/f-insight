@@ -2,9 +2,14 @@
 node_modules
 /.pnp
 .pnp.js
+# otherproject — локальные референсы чужих расширений для изучения (не коммитить, см. docs/CODE_DOCUMENTATION.md:15).
+# Оставлен для просмотра оригинальных кодов и улучшения взаимодействия, intentionally ignored.
 otherproject
 
 # Production builds
+# dist/ — ИСКЛЮЧЕНИЕ из общего правила GIT_AND_RELEASES.md: purposely tracked!
+# Игроки скачивают ZIP ветки main и грузят dist без Node.js (docs/README.md: Быстрый способ).
+# CI проверяет синхронность: npm run build && git diff --exit-code dist/
 dist-ssr
 *.local
 *.zip

@@ -25,11 +25,23 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Type Check
+        run: npx tsc --noEmit
+
+      - name: Check Version Sync (package.json ↔ manifest.json)
+        run: npm run check:versions
+
+      - name: Check Docs Sync (README ↔ README_EN)
+        run: npm run check:docs
+
       - name: Run Unit Tests
         run: npm test
 
       - name: Build Extension
         run: npm run build
+
+      - name: Verify dist is up-to-date (must be committed for no-Node install)
+        run: git diff --exit-code dist/
 
       - name: Package Extension ZIP
         run: |
