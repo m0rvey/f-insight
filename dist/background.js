@@ -2,7 +2,6 @@ const oe = {
   enableRedFlags: !0,
   enableVetoHelper: !0,
   enablePremadeDetection: !0,
-  enableFloatingControls: !0,
   compactMode: !1,
   disableOnHomeScreen: !1,
   // Automation defaults
