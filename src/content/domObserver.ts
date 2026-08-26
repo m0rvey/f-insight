@@ -249,21 +249,28 @@ export class DomObserver {
     const targets: PlayerElementTarget[] = [];
     const seen = new Set<string>();
 
-    // Scope to match room to avoid scanning 3000+ nodes in header/chat — 80% faster
-    const scopeRoot =
-      (document.querySelector('[class*="MatchRoom"], [class*="match-room"], [class*="MatchPage"], main, #main-content') as HTMLElement | null) || document.documentElement;
-    const candidates = (scopeRoot as Element).querySelectorAll(
-      'a, span, div, p, td, th, h5, h6, [class*="nickname"], [class*="Nickname"]'
-    );
+    // Two-phase scope: first try MatchRoom (fast), if not enough then document-wide (robust for new layouts)
+    const scopeRoots: Element[] = [];
+    const primaryScope = document.querySelector('[class*="MatchRoom"], [class*="match-room"], [class*="MatchPage"]') as HTMLElement | null;
+    if (primaryScope) scopeRoots.push(primaryScope);
+    const mainScope = document.querySelector('main, #main-content') as HTMLElement | null;
+    if (mainScope && mainScope !== primaryScope) scopeRoots.push(mainScope);
+    scopeRoots.push(document.documentElement);
+    // Use a Set to avoid revisiting same element via multiple scopes
+    const visitedEls = new Set<Element>();
+    const allCandidates: Element[] = [];
+    for (const root of scopeRoots) {
+      const cand = root.querySelectorAll(
+        'a, span, div, p, td, th, h5, h6, li, button, [class*="nickname"], [class*="Nickname"], [data-testid*="player"], [data-testid*="roster"]'
+      );
+      for (const el of cand) if (!visitedEls.has(el)) { visitedEls.add(el); allCandidates.push(el); }
+      if (allCandidates.length > 4000) break; // safety cap
+    }
 
-    for (const el of candidates) {
-      if (seen.size >= wantedMap.size) break; // everyone found — stop walking
+    for (const el of allCandidates) {
+      if (seen.size >= wantedMap.size) break;
       if (!(el instanceof HTMLElement) || !el.isConnected) continue;
-      // Never match chat bubbles — short nicks like "gg" frequently appear in chat
       if (el.closest('[class*="chat"], [class*="Chat"], [class*="ChatMessage"]')) continue;
-      // Leaf elements match their whole subtree text; containers may still
-      // match via their OWN direct text nodes ("flag-icon + Nickname" cells
-      // render the name next to a child icon — no leaf carries the full name).
       let texts: string[] = [];
       if (el.children.length === 0) {
         texts.push((el.textContent || '').trim());

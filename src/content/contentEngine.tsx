@@ -833,9 +833,34 @@ class ContentEngine {
       targetRootKeys.push({ target, rosterItem, rootKey, hostId });
     }
 
-    // Prune roots whose host vanished OR whose key is no longer expected (e.g. occurrence ordinal changed after DOM reorder)
-    // Without this, same roster row could accumulate 2-3 hosts with -loc0/-loc1/-loc2 across reorderings — the "table repeats 3 times" bug.
-    const expectedKeys = new Set(targetRootKeys.map((x) => x.rootKey));
+    // Leave badge only under "Идти к профилю" / "Go to profile" inside modals — otherwise 3 badges per player (avatar, nickname, profile link) stack as "table repeats 3 times"
+    const modalSeenForFilter = new Set<string>();
+    const filteredRootKeys: typeof targetRootKeys = [];
+    // Prioritize the target whose text contains "профил"/"profile" so the kept badge is under the correct link
+    const sortedForModal = [...targetRootKeys].sort((a, b) => {
+      const aIsModal = a.rootKey.includes('-profile-modal');
+      const bIsModal = b.rootKey.includes('-profile-modal');
+      if (aIsModal && bIsModal && a.rosterItem.player_id === b.rosterItem.player_id) {
+        const aText = (a.target.element.textContent || '').toLowerCase();
+        const bText = (b.target.element.textContent || '').toLowerCase();
+        const aHasProfile = aText.includes('профил') || aText.includes('profile');
+        const bHasProfile = bText.includes('профил') || bText.includes('profile');
+        if (aHasProfile && !bHasProfile) return -1;
+        if (!aHasProfile && bHasProfile) return 1;
+      }
+      return 0;
+    });
+    for (const item of sortedForModal) {
+      const isModal = item.rootKey.includes('-profile-modal');
+      if (isModal) {
+        if (modalSeenForFilter.has(item.rosterItem.player_id)) continue;
+        modalSeenForFilter.add(item.rosterItem.player_id);
+      }
+      filteredRootKeys.push(item);
+    }
+
+    // Prune roots whose host vanished OR whose key is no longer expected
+    const expectedKeys = new Set(filteredRootKeys.map((x) => x.rootKey));
     for (const [key, entry] of this.playerRoots) {
       if (!entry.host.isConnected || !expectedKeys.has(key)) {
         try {
@@ -843,7 +868,6 @@ class ContentEngine {
         } catch {}
         this.playerRoots.delete(key);
         this.playerRenderedState.delete(key);
-        // Also remove orphan host element if still in DOM (sweep handles per-target, but this covers stale keys)
         try {
           if (entry.host.isConnected) entry.host.remove();
         } catch {}
@@ -852,7 +876,7 @@ class ContentEngine {
     // Reset occurrence for second pass (actual render)
     occurrenceCount.clear();
 
-    for (const { target, rosterItem, rootKey, hostId } of targetRootKeys) {
+    for (const { target, rosterItem, rootKey, hostId } of filteredRootKeys) {
       const pId = rosterItem.player_id;
       const inProfileModal = rootKey.includes('-profile-modal');
 
