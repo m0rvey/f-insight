@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateProjectedElo,
   calculateTeamFcr,
   evaluatePlayerForm,
   calculateAdvancedMatchPrediction,
@@ -10,27 +9,6 @@ import { FaceitPlayerFullStats, PlayerRecentMatch } from '../src/types/faceit';
 import { RiskAnalysisResult } from '../src/types/risk';
 
 describe('forecastEngine', () => {
-  describe('calculateProjectedElo', () => {
-    it('should return +25 / -25 when teams have equal average Elo', () => {
-      const result = calculateProjectedElo(1500, 1500);
-      expect(result.faction1.winGain).toBe(25);
-      expect(result.faction1.lossLoss).toBe(25);
-      expect(result.faction2.winGain).toBe(25);
-      expect(result.faction2.lossLoss).toBe(25);
-    });
-
-    it('should calculate asymmetric stakes when Elo difference is significant', () => {
-      // Faction 1 has 1800 Elo, Faction 2 has 1400 Elo (Delta 400)
-      const result = calculateProjectedElo(1800, 1400);
-      // Faction 1 is heavily favored: small gain on win, big loss on defeat
-      expect(result.faction1.winGain).toBeLessThan(15);
-      expect(result.faction1.lossLoss).toBeGreaterThan(40);
-      // Faction 2 is underdog: big gain on win, small loss on defeat
-      expect(result.faction2.winGain).toBeGreaterThan(40);
-      expect(result.faction2.lossLoss).toBeLessThan(15);
-    });
-  });
-
   describe('calculateTeamFcr', () => {
     it('should sum all 5 players contribution to approximately 100%', () => {
       const createDummyPlayer = (id: string, elo: number, kd: number, adr: number): FaceitPlayerFullStats => ({

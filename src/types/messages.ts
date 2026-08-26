@@ -3,11 +3,6 @@ import { SteamFullData } from './steam';
 import { ExtensionSettings, PremadeGroup } from './settings';
 import { RiskAnalysisResult } from './risk';
 
-export interface ProjectedElo {
-  winGain: number; // e.g. +24
-  lossLoss: number; // e.g. -26
-}
-
 export interface AdvancedMatchPrediction {
   winChanceF1: number;
   winChanceF2: number;
@@ -64,7 +59,6 @@ export interface LobbyAnalysisPayload {
       avgKd: number;
       avgHsPercent: number;
       avgAdr: number;
-      projectedElo: ProjectedElo;
     };
     faction2: {
       totalElo: number;
@@ -73,7 +67,6 @@ export interface LobbyAnalysisPayload {
       avgKd: number;
       avgHsPercent: number;
       avgAdr: number;
-      projectedElo: ProjectedElo;
     };
     eloDifference: number;
   };

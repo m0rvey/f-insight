@@ -4,8 +4,6 @@ interface TeamCardProps {
   factionId: 1 | 2;
   teamName: string;
   winChance: number;
-  projectedWin: number;
-  projectedLoss: number;
   avgElo: number;
   avgKd: number;
   avgAdr: number;
@@ -18,8 +16,6 @@ export const TeamCard = React.memo<TeamCardProps>(({
   factionId,
   teamName,
   winChance,
-  projectedWin,
-  projectedLoss,
   avgElo,
   avgKd,
   avgAdr,
@@ -49,9 +45,6 @@ export const TeamCard = React.memo<TeamCardProps>(({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 font-mono font-extrabold">
-              +{projectedWin} / -{projectedLoss} ELO
-            </span>
             <span className="text-xs font-black text-blue-400 font-mono">
               {winChance}% Win
             </span>
@@ -62,9 +55,6 @@ export const TeamCard = React.memo<TeamCardProps>(({
           <div className="flex items-center gap-2">
             <span className="text-xs font-black text-orange-400 font-mono">
               {winChance}% Win
-            </span>
-            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300 font-mono font-extrabold">
-              +{projectedWin} / -{projectedLoss} ELO
             </span>
           </div>
           <div className="flex items-center gap-2.5">

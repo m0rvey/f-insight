@@ -10,7 +10,6 @@ import { steamApi } from '../services/steamApi';
 import { calculateRiskScore } from '../services/riskScorer';
 import { detectPremades } from '../services/premadeDetector';
 import {
-  calculateProjectedElo,
   calculateTeamFcr,
   calculateAdvancedMatchPrediction,
 } from '../services/forecastEngine';
@@ -296,9 +295,6 @@ export class BackgroundMessageHandler {
 
     const eloDiff = f1AvgElo - f2AvgElo;
 
-    // Projected Elo (+/-)
-    const projectedEloStakes = calculateProjectedElo(f1AvgElo, f2AvgElo);
-
     const f1Kds = f1Roster.map((p: any) => playersStats[p.player_id]?.last30Kd ?? playersStats[p.player_id]?.overallKd ?? 1.0);
     const f2Kds = f2Roster.map((p: any) => playersStats[p.player_id]?.last30Kd ?? playersStats[p.player_id]?.overallKd ?? 1.0);
     const f1AvgKd = f1Kds.length > 0 ? parseFloat((f1Kds.reduce((a: number, b: number) => a + b, 0) / f1Kds.length).toFixed(2)) : 1.0;
@@ -358,7 +354,6 @@ export class BackgroundMessageHandler {
           avgKd: f1AvgKd,
           avgHsPercent: f1AvgHs,
           avgAdr: f1AvgAdr,
-          projectedElo: projectedEloStakes.faction1,
         },
         faction2: {
           totalElo: f2TotalElo,
@@ -367,7 +362,6 @@ export class BackgroundMessageHandler {
           avgKd: f2AvgKd,
           avgHsPercent: f2AvgHs,
           avgAdr: f2AvgAdr,
-          projectedElo: projectedEloStakes.faction2,
         },
         eloDifference: Math.abs(eloDiff),
       },

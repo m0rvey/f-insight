@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateTeamFcr,
-  calculateProjectedElo,
   evaluatePlayerForm,
   calculateAdvancedMatchPrediction,
 } from '../src/services/forecastEngine';
@@ -34,15 +33,6 @@ describe('F-Insight Robustness & Vulnerability Fix Verification', () => {
     expect(fcr['p_carry']).toBeGreaterThan(60);
     expect(Number.isFinite(fcr['p_carry'])).toBe(true);
     expect(Number.isFinite(fcr['p_corrupted'])).toBe(true);
-  });
-
-  it('Verification 2: Projected Elo safely clamps and eliminates NaN on non-numeric inputs', () => {
-    const res = calculateProjectedElo(NaN, 1500);
-    console.log('[FIXED] calculateProjectedElo with NaN input produced safe defaults:', res);
-    expect(Number.isFinite(res.faction1.winGain)).toBe(true);
-    expect(Number.isFinite(res.faction1.lossLoss)).toBe(true);
-    expect(res.faction1.winGain).toBeGreaterThanOrEqual(1);
-    expect(res.faction1.winGain).toBeLessThanOrEqual(49);
   });
 
   it('Verification 3: Corrupted/missing stats in match history fall back safely to baseline', () => {
@@ -119,7 +109,7 @@ describe('F-Insight Robustness & Vulnerability Fix Verification', () => {
       });
 
       // Non-finite inputs fall back to the 1000 Elo default on BOTH sides,
-      // mirroring calculateProjectedElo conventions → perfectly even match
+      // equal-average fallbacks → perfectly even match
       expect(Number.isFinite(res.winChanceF1)).toBe(true);
       expect(res.factors.eloDelta).toBe(0);
       expect(res.winChanceF1).toBe(50);

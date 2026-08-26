@@ -3,42 +3,9 @@ import {
   PlayerRecentMatch,
   PlayerFormStatus,
 } from '../types/faceit';
-import { ProjectedElo, AdvancedMatchPrediction } from '../types/messages';
+import { AdvancedMatchPrediction } from '../types/messages';
 import { PremadeGroup } from '../types/settings';
 import { RiskAnalysisResult } from '../types/risk';
-
-/**
- * Calculates projected Elo gain/loss for both teams based on team average Elo ratings.
- * Follows standard FACEIT 5v5 Elo rating curve (K-factor = 50).
- */
-export function calculateProjectedElo(
-  f1AvgElo: number,
-  f2AvgElo: number
-): { faction1: ProjectedElo; faction2: ProjectedElo } {
-  const safeF1 = Number.isFinite(f1AvgElo) ? Math.max(100, Math.min(6000, f1AvgElo)) : 1000;
-  const safeF2 = Number.isFinite(f2AvgElo) ? Math.max(100, Math.min(6000, f2AvgElo)) : 1000;
-  const eloDiff = safeF2 - safeF1;
-  const expectedF1 = 1 / (1 + Math.pow(10, eloDiff / 400));
-  const expectedF2 = 1 - expectedF1;
-
-  const K = 50;
-  const f1WinGain = Math.max(1, Math.min(49, Math.round(K * (1 - expectedF1))));
-  const f1LossLoss = Math.max(1, Math.min(49, Math.round(K * expectedF1)));
-
-  const f2WinGain = Math.max(1, Math.min(49, Math.round(K * (1 - expectedF2))));
-  const f2LossLoss = Math.max(1, Math.min(49, Math.round(K * expectedF2)));
-
-  return {
-    faction1: {
-      winGain: f1WinGain,
-      lossLoss: f1LossLoss,
-    },
-    faction2: {
-      winGain: f2WinGain,
-      lossLoss: f2LossLoss,
-    },
-  };
-}
 
 /**
  * Calculates FCR (Firepower Contribution Rating) for players on a team.
