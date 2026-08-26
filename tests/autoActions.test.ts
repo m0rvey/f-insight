@@ -22,6 +22,7 @@ function spyClick(btn: HTMLElement) {
 }
 
 const baseSettings: ExtensionSettings = {
+  disableOnHomeScreen: false,
   autoReadyUp: true,
   autoAcceptParty: true,
   autoDismissAfk: true,
@@ -32,7 +33,7 @@ const baseSettings: ExtensionSettings = {
   autoCopyConnectIp: false,
   enableVetoHelper: true,
   riskThreshold: 'MEDIUM',
-};
+} as ExtensionSettings;
 
 describe('AutoActionsEngine', () => {
   let engine: AutoActionsEngine;
@@ -133,10 +134,13 @@ describe('AutoActionsEngine', () => {
   });
 
   describe('queue continue context', () => {
-    it('only clicks "CONTINUE" inside a dialog', () => {
+    it('only clicks "CONTINUE" inside a matchmaking dialog (context-verified)', () => {
       const dialog = document.createElement('div');
       dialog.setAttribute('role', 'dialog');
+      const label = document.createElement('p');
+      label.textContent = 'The search was aborted because a player failed to ready up.';
       const contBtn = makeButton('CONTINUE');
+      dialog.appendChild(label);
       dialog.appendChild(contBtn);
       document.body.appendChild(dialog);
 
@@ -325,6 +329,110 @@ describe('AutoActionsEngine', () => {
       engine.checkAndExecute(baseSettings, undefined, [], 'VOTING');
 
       expect(spy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('dialog context guards ("Action Failed" prevention)', () => {
+    it('does NOT click "CONTINUE" inside an unrelated dialog (e.g. profile/settings)', () => {
+      const dialog = document.createElement('div');
+      dialog.className = 'modal';
+      const label = document.createElement('p');
+      label.textContent = 'Update your profile details to continue';
+      const btn = makeButton('CONTINUE');
+      dialog.appendChild(label);
+      dialog.appendChild(btn);
+      document.body.appendChild(dialog);
+
+      const spy = spyClick(btn);
+      engine.checkAndExecute(baseSettings, undefined, [], undefined);
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('clicks the inactivity button only in a genuine "still here" dialog (RU)', () => {
+      const dialog = document.createElement('div');
+      dialog.className = 'modal';
+      const label = document.createElement('p');
+      label.textContent = 'Вы ещё здесь? Подтвердите, что вы активны';
+      const btn = makeButton('ПРОДОЛЖИТЬ');
+      dialog.appendChild(label);
+      dialog.appendChild(btn);
+      document.body.appendChild(dialog);
+
+      const spy = spyClick(btn);
+      engine.checkAndExecute(baseSettings, undefined, [], undefined);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('clicks "I\'m Here" in an English inactivity check dialog', () => {
+      const dialog = document.createElement('div');
+      dialog.className = 'Modal';
+      const label = document.createElement('p');
+      label.textContent = 'Are you still there?';
+      const btn = makeButton("I'M HERE");
+      dialog.appendChild(label);
+      dialog.appendChild(btn);
+      document.body.appendChild(dialog);
+
+      const spy = spyClick(btn);
+      engine.checkAndExecute(baseSettings, undefined, [], undefined);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT auto-continue queue from a dialog with no matchmaking context', () => {
+      const dialog = document.createElement('div');
+      dialog.className = 'popup';
+      const label = document.createElement('p');
+      label.textContent = 'Choose your notification preferences';
+      const btn = makeButton('CONTINUE SEARCH');
+      dialog.appendChild(label);
+      dialog.appendChild(btn);
+      document.body.appendChild(dialog);
+
+      const spy = spyClick(btn);
+      engine.checkAndExecute({ ...baseSettings, autoDismissAfk: false }, undefined, [], undefined);
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('continues the queue when the match-aborted dialog is confirmed by text', () => {
+      const dialog = document.createElement('div');
+      dialog.className = 'Modal';
+      const label = document.createElement('p');
+      label.textContent = 'Matchmaking aborted: a player failed to ready up.';
+      const btn = makeButton('CONTINUE SEARCH');
+      dialog.appendChild(label);
+      dialog.appendChild(btn);
+      document.body.appendChild(dialog);
+
+      const spy = spyClick(btn);
+      engine.checkAndExecute({ ...baseSettings, autoDismissAfk: false }, undefined, [], undefined);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('global click gap', () => {
+    it('suppresses a second automation firing right after the first one', () => {
+      const matchRoom = document.createElement('div');
+      matchRoom.className = 'MatchRoom';
+      const readyBtn = makeButton('CHECK IN');
+      matchRoom.appendChild(readyBtn);
+      document.body.appendChild(matchRoom);
+
+      const readySpy = spyClick(readyBtn);
+      engine.checkAndExecute({ ...baseSettings, autoAcceptParty: false }, undefined, [], 'VOTING');
+      expect(readySpy).toHaveBeenCalledTimes(1);
+
+      // A different automation fires within the global gap — must stay quiet.
+      const inviteBtn = makeButton('ACCEPT', 'party-invite');
+      document.body.appendChild(inviteBtn);
+      const inviteSpy = spyClick(inviteBtn);
+      engine.checkAndExecute(baseSettings, undefined, [], 'VOTING');
+
+      expect(inviteSpy).not.toHaveBeenCalled();
     });
   });
 });

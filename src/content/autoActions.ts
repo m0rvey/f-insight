@@ -38,6 +38,15 @@ const READY_SUBSTRING_REGEX = /(CHECK\s*IN|ACCEPT\s*MATCH|READY\s*UP|ПРИНЯ�
 const AFK_REGEX = /^(I'M\s*HERE|STILL\s*HERE|CONTINUE|Я\s*ЗДЕСЬ|ПРОДОЛЖИТЬ)$/i;
 const QUEUE_CONT_REGEX = /^(CONTINUE\s*SEARCH|FIND\s*MATCH|CONTINUE|ПРОДОЛЖИТЬ\s*ПОИСК|ИСКАТЬ\s*СНОВА)$/i;
 
+/**
+ * Dialogs are only trusted for automation when their TEXT confirms the
+ * scenario. Generic buttons like "Continue" exist in settings confirmations,
+ * profile dialogs and tutorials — blind-clicking those is a major source of
+ * FACEIT "Action Failed" errors.
+ */
+export const AFK_MODAL_CONTEXT_REGEX = /(still\s*here|are\s*you\s*(still\s*)?(there|with us|active)|inactive|inactivity|вы\s*(ещё|еще)\s*здесь|вы\s*активны|неактивност)/i;
+export const QUEUE_MODAL_CONTEXT_REGEX = /(queue|matchmak|search|match[\s-]*(aborted|cancelled|canceled|failed|creation)|ready[\s-]*up|очередь|поиск|подбор|матч[\s-]*(прерван|отмен[её]н|не\s*состоял))/i;
+
 function textOf(el: Element): string {
   return el.textContent?.trim().replace(/\s+/g, ' ') || '';
 }
@@ -46,6 +55,8 @@ export class AutoActionsEngine {
   private lastClickedButton: Element | null = null;
   private lastClickTime = 0;
   private lastClickByAction: Map<AutoActionKind, number> = new Map();
+  private lastEngineClickAt = 0;
+  private readonly globalClickGapMs = 1500;
   private hasCopiedServerIp = false;
   private vetoClickCount = 0;
   private lastUserActivity = 0;
@@ -55,6 +66,7 @@ export class AutoActionsEngine {
     this.lastClickedButton = null;
     this.lastClickTime = 0;
     this.lastClickByAction.clear();
+    this.lastEngineClickAt = 0;
     this.hasCopiedServerIp = false;
     this.vetoClickCount = 0;
     this.lastUserActivity = 0;
@@ -80,10 +92,15 @@ export class AutoActionsEngine {
     const now = Date.now();
     this.lastClickedButton = el;
     this.lastClickTime = now;
+    this.lastEngineClickAt = now;
     this.lastClickByAction.set(kind, now);
   }
 
   private clickElementSafely(el: Element, kind: AutoActionKind, actionLabel: string, cooldownMs = 2000): boolean {
+    // Global inter-click gap: never fire two different automations within a
+    // short window — rapid back-to-back synthetic clicks read as bot behavior
+    // and make FACEIT reject them with "Action Failed".
+    if (Date.now() - this.lastEngineClickAt < this.globalClickGapMs) return false;
     if (!this.canClick(kind, el, cooldownMs)) return false;
     if (isElementHidden(el)) return false;
 
@@ -212,6 +229,15 @@ export class AutoActionsEngine {
     const modalParent = document.querySelector('[role="dialog"], [class*="Modal"], [class*="modal"], [class*="popup"]');
     if (!modalParent) return;
 
+    // Only act when the dialog text confirms it is genuinely the inactivity
+    // check — a bare "Continue" button also lives in settings confirmations,
+    // profile dialogs and tutorials, and clicking those causes "Action Failed".
+    const contextText = (modalParent.textContent || '').slice(0, 600);
+    if (!AFK_MODAL_CONTEXT_REGEX.test(contextText)) {
+      console.debug('[f-insight:AutoAction] AFK dismiss skipped (dialog is not an inactivity check)');
+      return;
+    }
+
     const buttons = modalParent.querySelectorAll('button, [role="button"]');
     for (const btn of buttons) {
       const text = textOf(btn);
@@ -227,6 +253,14 @@ export class AutoActionsEngine {
     // Continue search when match aborted because someone failed to ready up
     const queueContainer = document.querySelector('[role="dialog"], [class*="queue"], [class*="Queue"], [class*="modal"], [class*="Modal"], [data-testid*="continue"]');
     if (!queueContainer) return;
+
+    // Verify the dialog actually talks about queue/matchmaking before we let
+    // the generic "Continue" regex anywhere near it.
+    const contextText = (queueContainer.textContent || '').slice(0, 600);
+    if (!QUEUE_MODAL_CONTEXT_REGEX.test(contextText)) {
+      console.debug('[f-insight:AutoAction] queue continue skipped (no matchmaking context in dialog)');
+      return;
+    }
 
     const buttons = queueContainer.querySelectorAll('button, [role="button"]');
     for (const btn of buttons) {
