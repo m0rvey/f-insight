@@ -27,6 +27,8 @@ class ContentEngine {
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private isDormant = false;
   private warnedZeroTargets = false;
+  private zeroTargetRetries = 0;
+  private zeroTargetRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastInterceptHandledAt = 0;
   private lastProfileInterceptHandledAt = 0;
   private liveMapPool: string[] | null = null;
@@ -641,6 +643,36 @@ class ContentEngine {
       );
     }
 
+    if (playerTargets.length === 0 && allRoster.length > 0) {
+      // Roster rows often mount AFTER the first scan (payload beats render).
+      // Quiet pages then fire no further relevant mutations, so rescan on a
+      // bounded timer until rows appear or attempts run out.
+      if (this.zeroTargetRetries < 20) {
+        this.zeroTargetRetries += 1;
+        if (!this.zeroTargetRetryTimer) {
+          const matchIdAtSchedule = this.currentMatchId;
+          this.zeroTargetRetryTimer = setTimeout(() => {
+            this.zeroTargetRetryTimer = null;
+            if (
+              this.currentMatchId === matchIdAtSchedule &&
+              !this.isDormant &&
+              this.lobbyPayload
+            ) {
+              this.domObserver.invalidateTargets();
+              this.renderPlayerBadges();
+            }
+          }, 2000);
+        }
+      }
+    } else if (playerTargets.length > 0) {
+      // Rows found — stop the recovery loop.
+      this.zeroTargetRetries = 0;
+      if (this.zeroTargetRetryTimer) {
+        clearTimeout(this.zeroTargetRetryTimer);
+        this.zeroTargetRetryTimer = null;
+      }
+    }
+
     // Same player may now legitimately own SEVERAL page-context targets
     // (roster row, scoreboard row, profile popup card). Give each occurrence a
     // stable ordinal so host ids and React roots never collide across locations.
@@ -861,6 +893,11 @@ class ContentEngine {
     this.vetoRanking = [];
     this.retryCount = 0;
     this.warnedZeroTargets = false;
+    this.zeroTargetRetries = 0;
+    if (this.zeroTargetRetryTimer) {
+      clearTimeout(this.zeroTargetRetryTimer);
+      this.zeroTargetRetryTimer = null;
+    }
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;

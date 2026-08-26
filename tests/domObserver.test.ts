@@ -120,4 +120,46 @@ describe('DomObserver.findPlayerElements', () => {
     const targets = observer.findPlayerElements(['nobody', 'nothing']);
     expect(targets).toHaveLength(0);
   });
+
+  it('does NOT cache an empty scan — late-rendered rows are found on the next call', () => {
+    // Regression: an early pass (payload beats FACEIT rendering) used to pin
+    // an empty result forever on quiet pages — badges never appeared.
+    const page = document.createElement('div');
+    document.body.appendChild(page);
+
+    const first = observer.findPlayerElements(['s1mple', 'device']);
+    expect(first).toHaveLength(0);
+
+    // Rows mount later; no further DOM mutation wakes the observer.
+    addRosterRow('s1mple', page);
+    addRosterRow('device', page);
+
+    const second = observer.findPlayerElements(['s1mple', 'device']);
+    expect(second.map((t) => t.nickname).sort()).toEqual(['device', 's1mple']);
+  });
+
+  it('matches a name rendered next to a child icon via own text nodes', () => {
+    // "flag-icon + Nickname" cells: no leaf element carries the full name,
+    // only the wrapper's direct text node does.
+    const list = document.createElement('ul');
+    for (const nick of ['s1mple', 'device']) {
+      const li = document.createElement('li');
+      const cell = document.createElement('span');
+      cell.className = 'name-cell';
+      const icon = document.createElement('i');
+      icon.className = 'flag-icon';
+      icon.textContent = '';
+      cell.appendChild(icon);
+      cell.appendChild(document.createTextNode(nick));
+      li.appendChild(cell);
+      list.appendChild(li);
+    }
+    document.body.appendChild(list);
+
+    const targets = observer.findPlayerElements(['s1mple', 'device']);
+    expect(targets.map((t) => t.nickname).sort()).toEqual(['device', 's1mple']);
+    for (const t of targets) {
+      expect(t.element.tagName).toBe('LI');
+    }
+  });
 });

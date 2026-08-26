@@ -89,6 +89,12 @@ export class DomObserver {
     return dirty;
   }
 
+  /** Force the next findPlayerElements() call to rescan from scratch. */
+  invalidateTargets(): void {
+    this.cachedTargets = null;
+    this.targetsDirty = true;
+  }
+
   findMatchHeaderMountPoint(): HTMLElement | null {
     if (this.cachedMountPoint && this.cachedMountPoint.isConnected) {
       return this.cachedMountPoint;
@@ -152,18 +158,27 @@ export class DomObserver {
       }
     }
 
-    this.cachedTargets = targets;
-    this.targetsDirty = false;
+    // Never cache an empty scan. An early pass (network payload lands before
+    // FACEIT finishes rendering roster rows) must not be pinned forever:
+    // quiet pages produce no further relevant mutations, so a cached empty
+    // result used to survive the whole session ("0/10 player rows located").
+    if (targets.length > 0) {
+      this.cachedTargets = targets;
+      this.targetsDirty = false;
+    } else {
+      this.cachedTargets = null;
+      this.targetsDirty = true;
+    }
     return targets;
   }
 
   /**
-   * Last-resort scan: match any LEAF element's trimmed text against known
-   * roster nicknames. FACEIT pages exist where player rows carry NO anchors
-   * at all (scoreboard tables render clickable spans) — an anchors-only walk
-   * reported "0/10 player rows located" there. Leaf-only matching keeps the
-   * scan cheap and immune to nested-label noise; early exit once every
-   * nickname is found.
+   * Last-resort scan: match known roster nicknames against leaf text and
+   * containers' own direct text nodes. FACEIT pages exist where player rows
+   * carry NO anchors at all (scoreboard tables render clickable spans) — an
+   * anchors-only walk reported "0/10 player rows located" there. Leaf/own-text
+   * matching keeps the scan cheap and immune to nested-label noise; early
+   * exit once every nickname is found.
    */
   private scanTargetsByNicknameText(nicknames: string[], existingTargets: PlayerElementTarget[] = []): PlayerElementTarget[] {
     const wanted = nicknames.map((raw) => ({ raw, lower: raw.toLowerCase() }));
@@ -177,18 +192,36 @@ export class DomObserver {
     for (const el of Array.from(candidates)) {
       if (seen.size >= wanted.length) break; // everyone found — stop walking
       if (!(el instanceof HTMLElement) || !el.isConnected) continue;
-      // Leaf elements only: containers would match their subtree's text.
-      if (el.children.length !== 0) continue;
+      // Leaf elements match their whole subtree text; containers may still
+      // match via their OWN direct text nodes ("flag-icon + Nickname" cells
+      // render the name next to a child icon — no leaf carries the full name).
+      let texts: string[] = [];
+      if (el.children.length === 0) {
+        texts.push((el.textContent || '').trim());
+      } else {
+        const own = Array.from(el.childNodes)
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent || '')
+          .join('')
+          .trim();
+        if (own) texts.push(own);
+      }
       // Never match our own injected UI.
       const elId = el.id || '';
       if (elId.startsWith('f-insight-') || (el.closest && el.closest('[id^="f-insight-"]'))) continue;
       // Skip nodes already covered by a primary-scan target container.
       if (existingTargets.some((t) => t.element.contains(el))) continue;
 
-      const text = (el.textContent || '').trim();
-      if (!text || text.length > 24 || text.includes('\n')) continue;
+      texts = texts.filter((t) => t.length > 0 && t.length <= 24 && !t.includes('\n'));
 
-      const hit = wanted.find((w) => w.lower === text.toLowerCase());
+      let hit: { raw: string; lower: string } | undefined;
+      for (const text of texts) {
+        const found = wanted.find((w) => w.lower === text.toLowerCase());
+        if (found) {
+          hit = found;
+          break;
+        }
+      }
       if (!hit || seen.has(hit.lower)) continue;
 
       // Climb to a stable row container so the badge has room beneath the row
