@@ -322,13 +322,25 @@ export class BackgroundMessageHandler {
         }
 
         if (!pStats) {
-          pStats = await faceitApi.getPlayerStats(pId, player.nickname);
-          if (pStats) {
-            // Partial payloads (stats endpoints failed → fabricated defaults)
-            // get a short negative TTL so a wrong "fresh account" snapshot is
-            // re-fetched quickly instead of poisoning the lobby for an hour.
-            const ttl = pStats.statsAvailable === false ? TTL.NEGATIVE : TTL.PLAYER_STATS;
-            await cacheManager.set(pCacheKey, pStats, ttl);
+          const fresh = await faceitApi.getPlayerStats(pId, player.nickname);
+          if (fresh && fresh.statsAvailable === false) {
+            // Downgrade guard: a throttled/failed own fetch returns a
+            // fabricated statsAvailable:false snapshot. It must never
+            // overwrite a good cached entry (e.g. one hydrated from
+            // intercepted page traffic moments earlier).
+            const prev = await cacheManager.get<FaceitPlayerFullStats>(pCacheKey);
+            if (prev && prev.statsAvailable !== false) {
+              pStats = prev;
+            } else {
+              // Partial payloads (stats endpoints failed → fabricated defaults)
+              // get a short negative TTL so a wrong "fresh account" snapshot is
+              // re-fetched quickly instead of poisoning the lobby for an hour.
+              await cacheManager.set(pCacheKey, fresh, TTL.NEGATIVE);
+              pStats = fresh;
+            }
+          } else if (fresh) {
+            await cacheManager.set(pCacheKey, fresh, TTL.PLAYER_STATS);
+            pStats = fresh;
           }
         }
 

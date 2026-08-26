@@ -41,7 +41,7 @@ class ContentEngine {
 
   // React Roots
   private mainRoot: Root | null = null;
-  private playerRoots: Map<string, Root> = new Map();
+  private playerRoots: Map<string, { root: Root; host: HTMLElement }> = new Map();
   private modalRoot: Root | null = null;
 
   // Render Caching State
@@ -646,6 +646,18 @@ class ContentEngine {
     // stable ordinal so host ids and React roots never collide across locations.
     const occurrenceCount = new Map<string, number>();
 
+    // Prune roots whose page container vanished since the last scan (popup
+    // closed, tab switched): detached React trees otherwise stay pinned in the
+    // map until the next full cleanup.
+    for (const [key, entry] of this.playerRoots) {
+      if (!entry.host.isConnected) {
+        try {
+          entry.root.unmount();
+        } catch {}
+        this.playerRoots.delete(key);
+      }
+    }
+
     for (const target of playerTargets) {
       // Match by nickname OR by the account UUID carried in profile links —
       // newer FACEIT builds may link by id instead of the nickname segment.
@@ -675,25 +687,43 @@ class ContentEngine {
       const hostId = `f-insight-player-${sanitizedId}${locationSuffix}`;
       const rootKey = `${pId}${locationSuffix}`;
 
-      let host = target.element.querySelector(`:scope > #${hostId}`) as HTMLElement;
-      let root = this.playerRoots.get(rootKey);
+      let host = target.element.querySelector(`:scope > #${hostId}`) as HTMLElement | null;
+      let root: Root | undefined;
       let isNewlyCreated = false;
 
       if (!host) {
-        if (root) {
+        const stale = this.playerRoots.get(rootKey);
+        if (stale) {
           try {
-            root.unmount();
+            stale.root.unmount();
           } catch (e) {}
           this.playerRoots.delete(rootKey);
         }
+        // Occurrence ordinals depend on scan order; when FACEIT reorders the
+        // DOM, a container can be left holding an orphaned host under the OLD
+        // id. Empty shadow hosts render as phantom 6px gaps — sweep them.
+        target.element
+          .querySelectorAll(':scope > [id^="f-insight-player-"]')
+          .forEach((el) => {
+            try {
+              el.remove();
+            } catch {}
+          });
         const shadow = createShadowContainer(hostId);
         shadow.host.style.cssText = `all: initial; display: ${this.isVisible ? 'block' : 'none'}; width: 100%; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; z-index: 10; margin-top: 6px;`;
         target.element.appendChild(shadow.host);
         root = createRoot(shadow.container);
-        this.playerRoots.set(rootKey, root);
+        this.playerRoots.set(rootKey, { root, host: shadow.host });
         host = shadow.host;
         isNewlyCreated = true;
       } else {
+        root = this.playerRoots.get(rootKey)?.root;
+        if (!root) {
+          // Host survived but its root did not — recreate the root in place.
+          root = createRoot(host.firstElementChild as HTMLElement);
+          this.playerRoots.set(rootKey, { root, host });
+          isNewlyCreated = true;
+        }
         host.style.display = this.isVisible ? 'block' : 'none';
       }
 
@@ -844,9 +874,9 @@ class ContentEngine {
       this.mainRoot = null;
     }
 
-    this.playerRoots.forEach((root) => {
+    this.playerRoots.forEach((entry) => {
       try {
-        root.unmount();
+        entry.root.unmount();
       } catch (e) {
         // Ignore already unmounted
       }
