@@ -22,6 +22,8 @@ class ContentEngine {
   private lobbyPayload: LobbyAnalysisPayload | null = null;
   private currentUser: DetectedCurrentUser | null = null;
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
+  private isDormant = false;
+  private warnedZeroTargets = false;
   private isLoading: boolean = false;
   private isVisible: boolean = true;
   private showVetoMatrix: boolean = true;
@@ -62,6 +64,7 @@ class ContentEngine {
           const stored = raw && typeof raw === 'object' && !Array.isArray(raw) && 'value' in raw ? raw.value : raw;
           this.settings = { ...DEFAULT_SETTINGS, ...stored };
           this.playerRenderedState.clear();
+          this.applyDormancy();
           this.renderAll(true);
         }
       });
@@ -82,27 +85,16 @@ class ContentEngine {
             this.cleanup();
           }
         }
+        // Dormancy is evaluated on every navigation — entering a match room
+        // wakes the engine, leaving it puts it back to sleep when enabled.
+        this.applyDormancy(matchId);
       });
     } catch (err) {
       console.warn('[f-insight:Content] spaWatcher registration failed:', err);
     }
 
     try {
-      this.domObserver.startObserving(() => {
-      if (this.lobbyPayload?.match) {
-        if (!this.lobbyPayload.match.server_ip) {
-          const liveIp = this.domObserver.findServerIpFromDom();
-          if (liveIp) {
-            this.lobbyPayload.match.server_ip = liveIp;
-          }
-        }
-      }
-
-      // autoActions runs on the 800ms interval below — never inside the observer tick
-      if (this.currentMatchId && this.lobbyPayload) {
-        this.renderAll();
-      }
-    });
+      this.domObserver.startObserving(() => this.handleDomUpdate());
 
     // Engine must stay quiet while the user interacts — otherwise our clicks
     // collide with the user's own clicks and FACEIT shows "Action Failed".
@@ -113,6 +105,7 @@ class ContentEngine {
     // Gated on tab visibility and match room presence to avoid burning CPU elsewhere.
     window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
+      if (this.isDormant) return;
       if (!this.currentMatchId || this.isDomFallback) return;
       autoActionsEngine.checkAndExecute(
         this.settings,
@@ -378,6 +371,54 @@ class ContentEngine {
     }
   }
 
+  /** DOM-observer callback; also re-armed after dormancy wake-ups. */
+  private handleDomUpdate() {
+    if (this.isDormant) return;
+
+    if (this.lobbyPayload?.match) {
+      if (!this.lobbyPayload.match.server_ip) {
+        const liveIp = this.domObserver.findServerIpFromDom();
+        if (liveIp) {
+          this.lobbyPayload.match.server_ip = liveIp;
+        }
+      }
+    }
+
+    // autoActions runs on the 800ms interval below — never inside the observer tick
+    if (this.currentMatchId && this.lobbyPayload) {
+      this.renderAll();
+    }
+  }
+
+  /**
+   * Full dormancy outside match rooms when `disableOnHomeScreen` is enabled:
+   * no DOM scanning, no widgets, no automations on the homepage / profile /
+   * matchmaking pages. Entering a match room wakes everything back up.
+   */
+  private applyDormancy(matchId: string | null = this.currentMatchId) {
+    const shouldBeDormant = this.settings.disableOnHomeScreen && !matchId;
+    if (shouldBeDormant === this.isDormant) return;
+
+    if (shouldBeDormant) {
+      this.isDormant = true;
+      try {
+        this.domObserver.stopObserving();
+      } catch (err) {
+        console.warn('[f-insight:Content] Failed to stop DOM observer for dormancy:', err);
+      }
+      this.cleanup();
+      console.log('[f-insight:Content] Dormant — disabled outside match rooms');
+    } else {
+      this.isDormant = false;
+      try {
+        this.domObserver.startObserving(() => this.handleDomUpdate());
+      } catch (err) {
+        console.warn('[f-insight:Content] Failed to resume DOM observer:', err);
+      }
+      console.log('[f-insight:Content] Awake — match room detected');
+    }
+  }
+
   private renderAll(forceRender: boolean = false) {
     const payloadChanged = forceRender ||
       this.lastRenderPayload !== this.lobbyPayload ||
@@ -459,27 +500,57 @@ class ContentEngine {
   }
 
   private renderPlayerBadges() {
-    if (!this.lobbyPayload) return;
+    if (!this.lobbyPayload || this.isDormant) return;
 
-    const playerTargets = this.domObserver.findPlayerElements();
+    const playerTargets = this.domObserver.findPlayerElements(
+      this.lobbyPayload.match?.teams
+        ? [
+            ...(this.lobbyPayload.match.teams.faction1?.roster || []),
+            ...(this.lobbyPayload.match.teams.faction2?.roster || []),
+          ].map((r) => r.nickname)
+        : []
+    );
     const allRoster = [
       ...(this.lobbyPayload.match.teams?.faction1?.roster || []),
       ...(this.lobbyPayload.match.teams?.faction2?.roster || []),
     ];
 
+    if (playerTargets.length === 0 && allRoster.length > 0 && !this.warnedZeroTargets) {
+      // Markup-drift diagnostics: payload knows the roster but the DOM scan
+      // found nothing — log once so the console explains missing badges.
+      this.warnedZeroTargets = true;
+      console.warn(
+        `[f-insight:Content] 0/${allRoster.length} player rows located in DOM — FACEIT markup may have changed; text-based fallback also failed`
+      );
+    }
+
     for (const target of playerTargets) {
+      // Match by nickname OR by the account UUID carried in profile links —
+      // newer FACEIT builds may link by id instead of the nickname segment.
       const rosterItem = allRoster.find(
-        (r) => r.nickname.toLowerCase() === target.nickname.toLowerCase()
+        (r) =>
+          (target.nickname && r.nickname.toLowerCase() === target.nickname.toLowerCase()) ||
+          (!!target.playerId && r.player_id === target.playerId)
       );
       if (!rosterItem) continue;
 
       const pId = rosterItem.player_id;
+      // A player row exists both in the roster and (while open) inside FACEIT's
+      // profile popup. Each location gets its OWN shadow host and React root —
+      // the previous single-root-per-player logic moved the roster badge into
+      // the popup and the roster badge vanished until the popup closed.
+      const inProfileModal = !!target.element.closest(
+        '[class*="players-modal"], [class*="PlayersModal"], [role="dialog"], [class*="popover"], [class*="Popover"]'
+      );
       // pId may contain characters that break CSS selectors (e.g. "dom:nick") —
-      // sanitize for the host id while keeping pId as the map key.
-      const hostId = `f-insight-player-${pId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      // sanitize for the host id while keeping the location key unique.
+      const sanitizedId = pId.replace(/[^a-zA-Z0-9_-]/g, '');
+      const locationSuffix = inProfileModal ? '-profile-modal' : '';
+      const hostId = `f-insight-player-${sanitizedId}${locationSuffix}`;
+      const rootKey = `${pId}${locationSuffix}`;
 
-      let host = target.element.querySelector(`#${hostId}`) as HTMLElement;
-      let root = this.playerRoots.get(pId);
+      let host = target.element.querySelector(`:scope > #${hostId}`) as HTMLElement;
+      let root = this.playerRoots.get(rootKey);
       let isNewlyCreated = false;
 
       if (!host) {
@@ -487,13 +558,13 @@ class ContentEngine {
           try {
             root.unmount();
           } catch (e) {}
-          this.playerRoots.delete(pId);
+          this.playerRoots.delete(rootKey);
         }
         const shadow = createShadowContainer(hostId);
         shadow.host.style.cssText = `all: initial; display: ${this.isVisible ? 'block' : 'none'}; width: 100%; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; z-index: 10; margin-top: 6px;`;
         target.element.appendChild(shadow.host);
         root = createRoot(shadow.container);
-        this.playerRoots.set(pId, root);
+        this.playerRoots.set(rootKey, root);
         host = shadow.host;
         isNewlyCreated = true;
       } else {
@@ -504,7 +575,7 @@ class ContentEngine {
 
       if (root && this.isVisible) {
         // Re-render only when newly created or this player's data actually changed
-        if (isNewlyCreated || this.playerRenderedState.get(pId) !== stats) {
+        if (isNewlyCreated || this.playerRenderedState.get(rootKey) !== stats) {
           const steam = this.lobbyPayload.steamData?.[pId];
           const risk = this.settings.enableRedFlags ? this.lobbyPayload.riskAnalysis?.[pId] : undefined;
           const premade = this.settings.enablePremadeDetection
@@ -524,7 +595,7 @@ class ContentEngine {
                 isCurrentUser={isUser}
                 showFcr={this.settings.showFcrRating}
                 showForm={this.settings.showFormIndicators}
-                compact={this.settings.compactMode}
+                compact={this.settings.compactMode || inProfileModal}
                 onOpenDetails={(id) => {
                   this.activePlayerFlyoutId = id;
                   this.renderModal(true);
@@ -532,8 +603,8 @@ class ContentEngine {
               />
             </React.StrictMode>
           );
-          
-          this.playerRenderedState.set(pId, stats);
+
+          this.playerRenderedState.set(rootKey, stats);
         }
       }
     }
@@ -643,6 +714,7 @@ class ContentEngine {
     this.currentUser = null;
     this.vetoRanking = [];
     this.retryCount = 0;
+    this.warnedZeroTargets = false;
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;

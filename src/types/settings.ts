@@ -4,6 +4,12 @@ export interface ExtensionSettings {
   enablePremadeDetection: boolean;
   enableFloatingControls: boolean;
   compactMode: boolean;
+  /**
+   * Full dormancy outside match rooms: when enabled, the extension does not
+   * scan the DOM, render widgets or run automations on FACEIT pages other
+   * than match rooms (homepage, profile, matchmaking, etc.).
+   */
+  disableOnHomeScreen: boolean;
   // Matchmaking Automation Features
   autoReadyUp: boolean;
   autoAcceptParty: boolean;
@@ -24,6 +30,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   enablePremadeDetection: true,
   enableFloatingControls: true,
   compactMode: false,
+  disableOnHomeScreen: false,
   // Automation defaults
   autoReadyUp: true,
   autoAcceptParty: true,

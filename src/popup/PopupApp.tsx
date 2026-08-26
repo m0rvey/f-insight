@@ -15,6 +15,7 @@ import {
   Play,
   Copy,
   UserCheck,
+  Home,
 } from 'lucide-react';
 import { SettingToggle } from '../components/popup/SettingToggle';
 
@@ -421,6 +422,17 @@ export const PopupApp: React.FC = () => {
         {/* TAB 3: MODULES & TOGGLES */}
         {activeTab === 'modules' && (
           <div className="space-y-2">
+            <SettingToggle
+              title="Disable on FACEIT Homepage"
+              description="Sleeps everywhere except match rooms — zero DOM scanning and no automations outside /room pages"
+              icon={Home}
+              iconColorClass="text-rose-400"
+              checked={settings.disableOnHomeScreen}
+              onChange={(val) => {
+                setSettings({ ...settings, disableOnHomeScreen: val });
+                handleSaveSettings({ disableOnHomeScreen: val });
+              }}
+            />
             <SettingToggle
               title="Smurf & Risk Detector"
               variant="simple"

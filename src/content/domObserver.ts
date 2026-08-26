@@ -1,6 +1,8 @@
 export interface PlayerElementTarget {
   nickname: string;
   element: HTMLElement;
+  /** FACEIT account UUID when the profile link carries an id instead of a nickname. */
+  playerId?: string;
 }
 
 export class DomObserver {
@@ -117,7 +119,7 @@ export class DomObserver {
     return this.cachedMountPoint;
   }
 
-  findPlayerElements(): PlayerElementTarget[] {
+  findPlayerElements(rosterNicknames: string[] = []): PlayerElementTarget[] {
     // Reuse the previous scan while all cached targets are still in the DOM.
     // Roster nodes are static once rendered; only a mutation marks the cache dirty.
     if (this.cachedTargets) {
@@ -129,15 +131,74 @@ export class DomObserver {
       this.cachedTargets = null;
     }
 
-    const targets = this.scanPlayerElements();
+    let targets = this.scanPlayerElements();
+
+    // Resilience net for FACEIT redesigns: when the payload knows the roster
+    // but class/href selectors missed rows, locate nickname text directly.
+    if (rosterNicknames.length > 0) {
+      const found = new Set(targets.map((t) => t.nickname.toLowerCase()));
+      const missing = rosterNicknames.filter((n) => n && !found.has(n.toLowerCase()));
+      if (missing.length > 0) {
+        const recovered = this.scanTargetsByNicknameText(missing, targets);
+        if (recovered.length > 0) {
+          console.warn(`[f-insight:DomObserver] Primary selectors missed ${missing.length} roster rows — text fallback recovered ${recovered.length}`);
+        }
+        for (const t of recovered) {
+          if (!found.has(t.nickname.toLowerCase())) {
+            targets.push(t);
+            found.add(t.nickname.toLowerCase());
+          }
+        }
+      }
+    }
+
     this.cachedTargets = targets;
     this.targetsDirty = false;
     return targets;
   }
 
+  /**
+   * Last-resort scan: walk every anchor on the page and match its trimmed
+   * text against known roster nicknames. Slow-ish (one querySelectorAll) but
+   * immune to class-name churn, so a FACEIT redesign degrades instead of
+   * killing all player widgets.
+   */
+  private scanTargetsByNicknameText(nicknames: string[], existingTargets: PlayerElementTarget[] = []): PlayerElementTarget[] {
+    const wanted = nicknames.map((raw) => ({ raw, lower: raw.toLowerCase() }));
+    const targets: PlayerElementTarget[] = [];
+    const seen = new Set<string>();
+
+    for (const anchor of Array.from(document.querySelectorAll('a'))) {
+      if (!(anchor instanceof HTMLElement) || !anchor.isConnected) continue;
+      // Skip anchors already covered by a primary-scan target container —
+      // otherwise the same row is reported twice under different nicknames
+      // (e.g. when the profile link segment is an account UUID).
+      if (existingTargets.some((t) => t.element.contains(anchor))) continue;
+      const text = (anchor.textContent || '').trim();
+      if (!text || text.length > 24 || text.includes('\n')) continue;
+
+      const hit = wanted.find((w) => w.lower === text.toLowerCase());
+      if (!hit || seen.has(hit.lower)) continue;
+
+      // Climb to a stable row container so the badge has room beneath the row
+      const rowCandidate = anchor.closest(
+        'li, tr, [class*="member"], [class*="Member"], [class*="player"], [class*="Player"], [class*="row"], [class*="Row"], [data-testid*="roster"]'
+      );
+      const container = rowCandidate instanceof HTMLElement ? rowCandidate : anchor;
+
+      seen.add(hit.lower);
+      targets.push({ nickname: hit.raw, element: container });
+    }
+
+    return targets;
+  }
+
   private scanPlayerElements(): PlayerElementTarget[] {
     const targets: PlayerElementTarget[] = [];
-    const seenNicknames = new Set<string>();
+    // Dedupe per CONTEXT: the same player legitimately renders twice — once in
+    // the match roster and once inside the FACEIT profile popup. Keying only
+    // by nickname used to drop the popup copy entirely.
+    const seenKeys = new Set<string>();
 
     const cardSelectors = [
       '[data-testid*="roster-player"]',
@@ -174,6 +235,11 @@ export class DomObserver {
       const match = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([a-zA-Z0-9_.\-]+)/i);
       let nick = match ? match[1] : '';
 
+      // Newer FACEIT builds link profiles by account UUID — keep it so the
+      // roster can be matched by id when the nickname segment is unavailable.
+      const uuidMatch = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      const playerId = uuidMatch ? uuidMatch[1] : undefined;
+
       if (!nick) {
         const testId = targetContainer.getAttribute('data-testid') || el.getAttribute('data-testid') || '';
         const testIdMatch = testId.match(/roster-player-([a-zA-Z0-9_.\-]+)/i);
@@ -188,12 +254,21 @@ export class DomObserver {
         }
       }
 
-      if (nick && !seenNicknames.has(nick.toLowerCase())) {
-        seenNicknames.add(nick.toLowerCase());
-        targets.push({
-          nickname: nick,
-          element: targetContainer,
-        });
+      if (nick || playerId) {
+        // Same player may appear in the page AND in the profile popup — allow
+        // one target per context, dedupe only within the same context.
+        const inModalContext = !!targetContainer.closest(
+          '[class*="players-modal"], [class*="PlayersModal"], [role="dialog"], [class*="popover"], [class*="Popover"]'
+        );
+        const key = `${inModalContext ? 'modal' : 'page'}:${(nick || playerId || '').toLowerCase()}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          targets.push({
+            nickname: nick,
+            element: targetContainer,
+            playerId,
+          });
+        }
       }
     });
 
