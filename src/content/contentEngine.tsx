@@ -809,48 +809,52 @@ class ContentEngine {
     // Same player may now legitimately own SEVERAL page-context targets
     // (roster row, scoreboard row, profile popup card). Give each occurrence a
     // stable ordinal so host ids and React roots never collide across locations.
+    // First pass: map each target to its stable rootKey (needed for pruning)
     const occurrenceCount = new Map<string, number>();
-
-    // Prune roots whose page container vanished since the last scan (popup
-    // closed, tab switched): detached React trees otherwise stay pinned in the
-    // map until the next full cleanup.
-    for (const [key, entry] of this.playerRoots) {
-      if (!entry.host.isConnected) {
-        try {
-          entry.root.unmount();
-        } catch {}
-        this.playerRoots.delete(key);
-      }
-    }
-
+    const targetRootKeys: Array<{ target: typeof playerTargets[number]; rosterItem: FaceitPlayerRosterItem; rootKey: string; hostId: string }> = [];
     for (const target of playerTargets) {
-      // Match by nickname OR by the account UUID carried in profile links —
-      // newer FACEIT builds may link by id instead of the nickname segment.
       const rosterItem = allRoster.find(
         (r) =>
           (target.nickname && r.nickname.toLowerCase() === target.nickname.toLowerCase()) ||
           (!!target.playerId && r.player_id === target.playerId)
       );
       if (!rosterItem) continue;
-
       const pId = rosterItem.player_id;
-      // A player row exists both in the roster and (while open) inside FACEIT's
-      // profile popup. Each location gets its OWN shadow host and React root —
-      // the previous single-root-per-player logic moved the roster badge into
-      // the popup and the roster badge vanished until the popup closed.
       const inProfileModal = !!target.element.closest(
         '[class*="players-modal"], [class*="PlayersModal"], [role="dialog"], [class*="popover"], [class*="Popover"]'
       );
-      // pId may contain characters that break CSS selectors (e.g. "dom:nick") —
-      // sanitize for the host id while keeping the location key unique.
       const sanitizedId = pId.replace(/[^a-zA-Z0-9_-]/g, '');
       const occurrence = occurrenceCount.get(pId) || 0;
       occurrenceCount.set(pId, occurrence + 1);
       const locationSuffix =
-        (inProfileModal ? '-profile-modal' : '') +
-        (occurrence > 0 ? `-loc${occurrence}` : '');
+        (inProfileModal ? '-profile-modal' : '') + (occurrence > 0 ? `-loc${occurrence}` : '');
       const hostId = `f-insight-player-${sanitizedId}${locationSuffix}`;
       const rootKey = `${pId}${locationSuffix}`;
+      targetRootKeys.push({ target, rosterItem, rootKey, hostId });
+    }
+
+    // Prune roots whose host vanished OR whose key is no longer expected (e.g. occurrence ordinal changed after DOM reorder)
+    // Without this, same roster row could accumulate 2-3 hosts with -loc0/-loc1/-loc2 across reorderings — the "table repeats 3 times" bug.
+    const expectedKeys = new Set(targetRootKeys.map((x) => x.rootKey));
+    for (const [key, entry] of this.playerRoots) {
+      if (!entry.host.isConnected || !expectedKeys.has(key)) {
+        try {
+          entry.root.unmount();
+        } catch {}
+        this.playerRoots.delete(key);
+        this.playerRenderedState.delete(key);
+        // Also remove orphan host element if still in DOM (sweep handles per-target, but this covers stale keys)
+        try {
+          if (entry.host.isConnected) entry.host.remove();
+        } catch {}
+      }
+    }
+    // Reset occurrence for second pass (actual render)
+    occurrenceCount.clear();
+
+    for (const { target, rosterItem, rootKey, hostId } of targetRootKeys) {
+      const pId = rosterItem.player_id;
+      const inProfileModal = rootKey.includes('-profile-modal');
 
       let host = target.element.querySelector(`:scope > #${hostId}`) as HTMLElement | null;
       let root: Root | undefined;

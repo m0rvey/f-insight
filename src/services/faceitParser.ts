@@ -243,6 +243,17 @@ export function parsePlayerPayload(
         eloDiff,
       });
     }
+    // Dedupe by matchId — FACEIT time endpoint or intercepted parts can contain same match 2-3 times (e.g. overlapping stats/time payloads)
+    const seenIds = new Set<string>();
+    const deduped: PlayerRecentMatch[] = [];
+    for (const m of recentMatches) {
+      if (!seenIds.has(m.matchId)) {
+        seenIds.add(m.matchId);
+        deduped.push(m);
+      }
+    }
+    recentMatches.length = 0;
+    recentMatches.push(...deduped);
   }
 
   for (const [mName, hStats] of Object.entries(historyMapStats)) {
