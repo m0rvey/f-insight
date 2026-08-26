@@ -183,6 +183,12 @@ async function buildExtension() {
     resolve(distDir, 'manifest.json')
   );
 
+  // MAIN-world network hook ships as plain JS — no bundling.
+  fs.copyFileSync(
+    resolve(rootDir, 'public/network-hook.js'),
+    resolve(distDir, 'network-hook.js')
+  );
+
   const iconsSrcDir = resolve(rootDir, 'public/icons');
   const iconsDistDir = resolve(distDir, 'icons');
   if (fs.existsSync(iconsSrcDir)) {

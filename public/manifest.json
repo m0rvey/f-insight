@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "f-insight — FACEIT CS2 Match & Smurf Analytics",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Deep match lobby insights, smurf risk scoring, party/premade detection, auto ready-up, and map veto helper for FACEIT CS2.",
   "permissions": [
     "storage",
@@ -19,6 +19,21 @@
     "type": "module"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://www.faceit.com/*",
+        "https://faceit.com/*"
+      ],
+      "exclude_matches": [
+        "https://accounts.faceit.com/*",
+        "https://*.accounts.faceit.com/*"
+      ],
+      "js": [
+        "network-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://www.faceit.com/*",
