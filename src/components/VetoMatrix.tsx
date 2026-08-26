@@ -168,6 +168,12 @@ export const VetoMatrix = React.memo<VetoMatrixProps>(({
               <span className="text-[11px] text-zinc-400 font-normal block mt-0.5">
                 True sample-weighted map proficiency (wins, matches, K/D, ADR) across both 5-man rosters
               </span>
+              {!currentUser?.isDetected && (
+                <span className="text-[10px] text-amber-400/90 font-medium block mt-1">
+                  ⚠ Team not auto-detected — picks shown from {f1.name || 'Faction 1'}'s
+                  perspective. Open your FACEIT profile page once to personalize.
+                </span>
+              )}
             </div>
           </div>
         </div>

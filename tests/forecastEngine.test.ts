@@ -324,5 +324,26 @@ describe('forecastEngine', () => {
       expect(rankings[0].rank).toBe(1);
       expect(rankings[0].recommendation).toBe('MUST_PICK');
     });
+
+    it('flips the perspective for faction2 users: their best map becomes rank 1', () => {
+      // Faction 1 dominates mirage, faction 2 dominates nuke.
+      const f1Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f1_${i}`, 'mirage', 50, 40, 1.4, 90));
+      const f2Players = [1, 2, 3, 4, 5].map((i) => createPlayerWithMap(`f2_${i}`, 'nuke', 50, 40, 1.4, 90));
+
+      const fromF1 = calculateMapVetoRanking({ f1Players, f2Players, userFaction: 'faction1' });
+      const fromF2 = calculateMapVetoRanking({ f1Players, f2Players, userFaction: 'faction2' });
+
+      // Same underlying numbers, opposite sign per map.
+      const f1Delta = (name: string) => fromF1.find((r) => r.mapName === name)!.advantageDelta;
+      const f2Delta = (name: string) => fromF2.find((r) => r.mapName === name)!.advantageDelta;
+      expect(f2Delta('mirage')).toBe(-f1Delta('mirage'));
+      expect(f2Delta('nuke')).toBe(-f1Delta('nuke'));
+
+      // Rank 1 is "best for YOU": mirage for faction1 users, nuke for faction2.
+      expect(fromF1[0].mapName).toBe('mirage');
+      expect(fromF2[0].mapName).toBe('nuke');
+      expect(fromF2[0].recommendation).toBe('MUST_PICK');
+      expect(fromF2[0].advantageDelta).toBeGreaterThan(0);
+    });
   });
 });

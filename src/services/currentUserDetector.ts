@@ -5,9 +5,18 @@ export interface DetectedCurrentUser {
   isDetected: boolean;
 }
 
+/** Identity seen in intercepted FACEIT user payloads (guid + nickname). */
+export interface ObservedIdentity {
+  id?: string;
+  nickname?: string;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function detectCurrentPlayer(
   f1Roster: Array<{ player_id?: string; nickname?: string }>,
-  f2Roster: Array<{ player_id?: string; nickname?: string }>
+  f2Roster: Array<{ player_id?: string; nickname?: string }>,
+  observedIdentities: ObservedIdentity[] = []
 ): DetectedCurrentUser {
   const allPlayers = [
     ...f1Roster.map((p) => ({ ...p, faction: 'faction1' as const })),
@@ -20,6 +29,13 @@ export function detectCurrentPlayer(
 
   const candidateNicknames: string[] = [];
   const candidateIds: string[] = [];
+
+  // 0. Identities captured from the page's own traffic (highest fidelity:
+  // FACEIT's navbar fetches the logged-in user right after page load).
+  for (const identity of observedIdentities) {
+    if (identity.nickname && typeof identity.nickname === 'string') candidateNicknames.push(identity.nickname);
+    if (identity.id && typeof identity.id === 'string') candidateIds.push(identity.id);
+  }
 
   // 1. Try reading localStorage / sessionStorage keys commonly used by FACEIT frontend
   if (typeof window !== 'undefined') {
@@ -42,6 +58,53 @@ export function detectCurrentPlayer(
           }
         }
       }
+
+      // Generalized sweep: FACEIT renames storage keys between releases.
+      // Walk every key (bounded) and accept ANY stored JSON object that
+      // carries both a nickname and an id-like field — the fixed key list
+      // above only covers the historical names.
+      const collectFromStorage = (storage: Storage | undefined) => {
+        if (!storage) return;
+        let keys: string[] = [];
+        try {
+          keys = Object.keys(storage);
+        } catch {
+          return;
+        }
+        if (keys.length > 300) keys = keys.slice(0, 300);
+        for (const k of keys) {
+          // Already covered by the targeted pass above.
+          if (keysToCheck.includes(k)) continue;
+          let raw: string | null = null;
+          try {
+            raw = storage.getItem(k);
+          } catch {
+            continue;
+          }
+          if (!raw || typeof raw !== 'string' || raw.length > 100_000 || !raw.includes('nickname')) continue;
+          try {
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+            if (parsed.nickname && typeof parsed.nickname === 'string') candidateNicknames.push(parsed.nickname);
+            if (parsed.id && typeof parsed.id === 'string') candidateIds.push(parsed.id);
+            if (parsed.guid && typeof parsed.guid === 'string') candidateIds.push(parsed.guid);
+            if (parsed.user_id && typeof parsed.user_id === 'string') candidateIds.push(parsed.user_id);
+            // Nested { user: {...} } envelopes are common in app state blobs.
+            const inner = parsed.user;
+            if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+              if (inner.nickname && typeof inner.nickname === 'string') candidateNicknames.push(inner.nickname);
+              if (inner.guid && typeof inner.guid === 'string') candidateIds.push(inner.guid);
+              if (inner.id && typeof inner.id === 'string') candidateIds.push(inner.id);
+            }
+          } catch {
+            // not json
+          }
+        }
+      };
+      try {
+        collectFromStorage(window.localStorage);
+        collectFromStorage(window.sessionStorage);
+      } catch {}
 
       // Check token / JWT payloads in localStorage
       const tokenKeys = ['token', 'jwt', 'auth_token', 'faceit_token', 'id_token'];
@@ -101,9 +164,12 @@ export function detectCurrentPlayer(
         const links = document.querySelectorAll<HTMLAnchorElement>(sel);
         for (const link of links) {
           const href = link.getAttribute('href') || '';
-          const match = href.match(/\/(?:[a-z]{2}\/)?players\/([^/?#]+)/i);
+          const match = href.match(/\/(?:[a-z]{2}\/)?players(?:-modal)?\/([^/?#]+)/i);
           if (match && match[1]) {
-            candidateNicknames.push(decodeURIComponent(match[1]));
+            const segment = decodeURIComponent(match[1]);
+            // New FACEIT UI links the navbar avatar as /players/{guid}.
+            if (UUID_RE.test(segment)) candidateIds.push(segment);
+            else candidateNicknames.push(segment);
           }
         }
       }

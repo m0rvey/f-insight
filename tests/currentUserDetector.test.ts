@@ -6,11 +6,24 @@ describe('currentUserDetector', () => {
 
   beforeEach(() => {
     mockStorage = {};
-    const storageMock = {
-      getItem: (key: string) => mockStorage[key] || null,
-      setItem: (key: string, value: string) => { mockStorage[key] = value; },
-      removeItem: (key: string) => { delete mockStorage[key]; },
-      clear: () => { mockStorage = {}; },
+    // The storage object doubles as the data store: entries become own
+    // enumerable properties, so Object.keys(storage) sees them exactly like
+    // a real browser Storage (plus the API methods, which getItem never
+    // returns for since detector only reads stored strings).
+    const storageMock: any = mockStorage;
+    storageMock.getItem = function (key: string) {
+      return Object.prototype.hasOwnProperty.call(this, key) ? (this as any)[key] : null;
+    };
+    storageMock.setItem = function (key: string, value: string) {
+      (this as any)[key] = value;
+    };
+    storageMock.removeItem = function (key: string) {
+      delete (this as any)[key];
+    };
+    storageMock.clear = function () {
+      for (const k of Object.keys(this)) {
+        if (!['getItem', 'setItem', 'removeItem', 'clear'].includes(k)) delete (this as any)[k];
+      }
     };
 
     (globalThis as any).window = {
@@ -84,5 +97,58 @@ describe('currentUserDetector', () => {
 
     const result = detectCurrentPlayer(f1Roster, f2Roster);
     expect(result.isDetected).toBe(false);
+  });
+
+  it('matches an observed identity by guid against the roster', () => {
+    // Intercepted user payload: FACEIT navbar fetches the logged-in player
+    // right after page load — guid lands in the roster intersection.
+    const f1Roster = [
+      { player_id: 'p1_id', nickname: 's1mple' },
+    ];
+    const f2Roster = [
+      { player_id: 'guid-aaaa-bbbb', nickname: 'zywoo' },
+    ];
+
+    const result = detectCurrentPlayer(f1Roster, f2Roster, [{ id: 'guid-aaaa-bbbb', nickname: 'someone-else' }]);
+    expect(result.isDetected).toBe(true);
+    expect(result.playerId).toBe('guid-aaaa-bbbb');
+    expect(result.faction).toBe('faction2');
+  });
+
+  it('treats a UUID navbar link as an id candidate, not a nickname', () => {
+    (globalThis as any).document = {
+      querySelectorAll: (sel: string) => {
+        if (sel.includes('header')) {
+          return [{
+            getAttribute: (attr: string) =>
+              attr === 'href' ? '/players/123e4567-e89b-12d3-a456-426614174000' : null,
+          }];
+        }
+        return [];
+      },
+    };
+
+    const result = detectCurrentPlayer(
+      [{ player_id: 'p1_id', nickname: 's1mple' }],
+      [{ player_id: '123e4567-e89b-12d3-a456-426614174000', nickname: 'zywoo' }]
+    );
+    expect(result.isDetected).toBe(true);
+    expect(result.faction).toBe('faction2');
+  });
+
+  it('finds the user in a renamed storage key via the generalized sweep', () => {
+    // FACEIT renames storage keys between releases; a nested envelope under
+    // an unknown key must still yield the identity.
+    mockStorage['faceit-web:session:v9'] = JSON.stringify({
+      session: 'x',
+      user: { guid: 'p2_id', nickname: 'zywoo' },
+    });
+
+    const result = detectCurrentPlayer(
+      [{ player_id: 'p1_id', nickname: 's1mple' }],
+      [{ player_id: 'p2_id', nickname: 'zywoo' }]
+    );
+    expect(result.isDetected).toBe(true);
+    expect(result.faction).toBe('faction2');
   });
 });

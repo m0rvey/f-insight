@@ -167,9 +167,18 @@ export class BackgroundMessageHandler {
       (await cacheManager.get<{ user?: any; stats?: any; time?: any[] }>(stageKey)) || {};
 
     let accepted = false;
+    // When the intercepted payload is a USER object it doubles as an identity
+    // signal for team detection (FACEIT's navbar fetches the logged-in user
+    // right after page load). Surfaced back to the content script, which
+    // intersects guid/nickname against the match roster.
+    let selfCandidate: { guid: string; nickname?: string } | undefined;
     if (kind === 'user' && raw && typeof raw === 'object' && !Array.isArray(raw)) {
       staged.user = raw;
       accepted = true;
+      const nick = (raw as { nickname?: unknown }).nickname;
+      if (typeof nick === 'string' && nick.trim()) {
+        selfCandidate = { guid: playerId, nickname: nick.trim() };
+      }
     } else if (kind === 'stats' && raw && typeof raw === 'object' && !Array.isArray(raw)) {
       staged.stats = raw;
       accepted = true;
@@ -193,7 +202,7 @@ export class BackgroundMessageHandler {
 
     const composed = buildStatsFromInterceptedParts(playerId, staged);
     if (!composed) {
-      return { success: true, data: { kind: 'profile-staged', playerId } };
+      return { success: true, data: { kind: 'profile-staged', playerId, selfCandidate } };
     }
     await cacheManager.set(
       `player_stats:${playerId}`,
@@ -209,6 +218,7 @@ export class BackgroundMessageHandler {
         kind: 'profile-hydrated',
         playerId,
         statsAvailable: composed.statsAvailable !== false,
+        selfCandidate,
       },
     };
   }

@@ -132,19 +132,19 @@ function me(s) {
   const e = {};
   if (!s || s.length === 0) return e;
   const t = s.map((c) => {
-    const g = Number.isFinite(c.elo) ? c.elo : 1e3, _ = Math.max(500, g || 1e3) / 1e3, p = Number.isFinite(c.last30Kd) ? c.last30Kd : Number.isFinite(c.overallKd) ? c.overallKd : 1, d = Math.min(2.5, Math.max(0.4, p ?? 1)), w = 1 + (((Number.isFinite(c.last30Adr) ? c.last30Adr : Number.isFinite(c.overallAdr) ? c.overallAdr : 75) ?? 75) - 75) / 150, S = _ * d * Math.max(0.6, w);
+    const y = Number.isFinite(c.elo) ? c.elo : 1e3, v = Math.max(500, y || 1e3) / 1e3, m = Number.isFinite(c.last30Kd) ? c.last30Kd : Number.isFinite(c.overallKd) ? c.overallKd : 1, d = Math.min(2.5, Math.max(0.4, m ?? 1)), w = 1 + (((Number.isFinite(c.last30Adr) ? c.last30Adr : Number.isFinite(c.overallAdr) ? c.overallAdr : 75) ?? 75) - 75) / 150, S = v * d * Math.max(0.6, w);
     return { id: c.playerId, power: Number.isFinite(S) && S > 0 ? S : 1 };
-  }), a = t.reduce((c, g) => c + g.power, 0), i = Number.isFinite(a) && a > 0 ? a : 0;
+  }), a = t.reduce((c, y) => c + y.power, 0), i = Number.isFinite(a) && a > 0 ? a : 0;
   if (i <= 0) {
     const c = parseFloat((100 / s.length).toFixed(1));
-    for (const g of t)
-      e[g.id] = c;
+    for (const y of t)
+      e[y.id] = c;
     return e;
   }
-  let n = 0, r = "", y = -1;
+  let n = 0, r = "", p = -1;
   for (const c of t) {
-    const g = parseFloat((c.power / i * 100).toFixed(1));
-    e[c.id] = g, n += g, g > y && (y = g, r = c.id);
+    const y = parseFloat((c.power / i * 100).toFixed(1));
+    e[c.id] = y, n += y, y > p && (p = y, r = c.id);
   }
   const o = parseFloat((100 - n).toFixed(1));
   return o !== 0 && r && (e[r] = parseFloat((e[r] + o).toFixed(1))), e;
@@ -158,18 +158,18 @@ function Fe(s, e, t) {
       recentAdr: i
     };
   const n = s.slice(0, 5), r = n.filter(
-    (p) => typeof p.kills == "number" && Number.isFinite(p.kills) && typeof p.deaths == "number" && Number.isFinite(p.deaths)
+    (m) => typeof m.kills == "number" && Number.isFinite(m.kills) && typeof m.deaths == "number" && Number.isFinite(m.deaths)
   );
-  let y = a;
+  let p = a;
   if (r.length > 0) {
-    const p = r.reduce((A, w) => A + (w.kills || 0), 0), d = r.reduce((A, w) => A + (w.deaths || 0), 0);
-    y = d > 0 ? parseFloat((p / d).toFixed(2)) : parseFloat(Math.max(a, p / (r.length * 2)).toFixed(2));
+    const m = r.reduce((A, w) => A + (w.kills || 0), 0), d = r.reduce((A, w) => A + (w.deaths || 0), 0);
+    p = d > 0 ? parseFloat((m / d).toFixed(2)) : parseFloat(Math.max(a, m / (r.length * 2)).toFixed(2));
   }
-  const o = n.map((p) => p.adr).filter((p) => typeof p == "number" && Number.isFinite(p) && p > 0), c = o.length > 0 ? Math.round(o.reduce((p, d) => p + d, 0) / o.length) : i, g = y / a;
-  let _ = "STABLE";
-  return g >= 1.15 ? _ = "HOT" : g <= 1 / 1.15 && (_ = "COLD"), {
-    formStatus: _,
-    recentKd: y,
+  const o = n.map((m) => m.adr).filter((m) => typeof m == "number" && Number.isFinite(m) && m > 0), c = o.length > 0 ? Math.round(o.reduce((m, d) => m + d, 0) / o.length) : i, y = p / a;
+  let v = "STABLE";
+  return y >= 1.15 ? v = "HOT" : y <= 1 / 1.15 && (v = "COLD"), {
+    formStatus: v,
+    recentKd: p,
     recentAdr: c
   };
 }
@@ -181,12 +181,12 @@ function Ee(s) {
     premadeGroups: i,
     riskAnalysis: n,
     f1Fcr: r,
-    f2Fcr: y
-  } = s, o = Number.isFinite(s.f1AvgElo) ? Math.max(100, Math.min(6e3, s.f1AvgElo)) : 1e3, c = Number.isFinite(s.f2AvgElo) ? Math.max(100, Math.min(6e3, s.f2AvgElo)) : 1e3, g = o, _ = c, p = _ - g, d = 1 / (1 + Math.pow(10, p / 400));
+    f2Fcr: p
+  } = s, o = Number.isFinite(s.f1AvgElo) ? Math.max(100, Math.min(6e3, s.f1AvgElo)) : 1e3, c = Number.isFinite(s.f2AvgElo) ? Math.max(100, Math.min(6e3, s.f2AvgElo)) : 1e3, y = o, v = c, m = v - y, d = 1 / (1 + Math.pow(10, m / 400));
   let A = 0, w;
   const S = (a || "").replace(/^(cs2_|csgo_|de_)/, "").toLowerCase();
   if (S) {
-    const m = e.reduce((B, W) => B + (W.mapStats?.[S]?.wins || 0), 0), b = e.reduce((B, W) => B + (W.mapStats?.[S]?.matches || 0), 0), L = t.reduce((B, W) => B + (W.mapStats?.[S]?.wins || 0), 0), H = t.reduce((B, W) => B + (W.mapStats?.[S]?.matches || 0), 0), K = Math.round((m + 2.5) / (b + 5) * 100), X = Math.round((L + 2.5) / (H + 5) * 100), V = K - X;
+    const g = e.reduce((B, W) => B + (W.mapStats?.[S]?.wins || 0), 0), b = e.reduce((B, W) => B + (W.mapStats?.[S]?.matches || 0), 0), L = t.reduce((B, W) => B + (W.mapStats?.[S]?.wins || 0), 0), H = t.reduce((B, W) => B + (W.mapStats?.[S]?.matches || 0), 0), K = Math.round((g + 2.5) / (b + 5) * 100), X = Math.round((L + 2.5) / (H + 5) * 100), V = K - X;
     b + H >= 10 && (A = Math.max(-0.12, Math.min(0.12, V / 100 * 0.25))), w = {
       leader: V >= 5 ? "faction1" : V <= -5 ? "faction2" : "balanced",
       mapName: S,
@@ -195,31 +195,31 @@ function Ee(s) {
       deltaWinRate: Math.abs(V)
     };
   }
-  const f = e.filter((m) => m.formStatus === "HOT").length, E = e.filter((m) => m.formStatus === "COLD").length, I = t.filter((m) => m.formStatus === "HOT").length, x = t.filter((m) => m.formStatus === "COLD").length, G = f - E, j = I - x, O = Math.max(-0.1, Math.min(0.1, (G - j) * 0.03)), se = new Set(e.map((m) => m.playerId)), J = new Set(t.map((m) => m.playerId));
+  const f = e.filter((g) => g.formStatus === "HOT").length, E = e.filter((g) => g.formStatus === "COLD").length, I = t.filter((g) => g.formStatus === "HOT").length, x = t.filter((g) => g.formStatus === "COLD").length, G = f - E, j = I - x, O = Math.max(-0.1, Math.min(0.1, (G - j) * 0.03)), se = new Set(e.map((g) => g.playerId)), J = new Set(t.map((g) => g.playerId));
   let P = 1, k = 1;
-  for (const m of i) {
-    const b = m.playerIds.filter((H) => se.has(H)).length, L = m.playerIds.filter((H) => J.has(H)).length;
+  for (const g of i) {
+    const b = g.playerIds.filter((H) => se.has(H)).length, L = g.playerIds.filter((H) => J.has(H)).length;
     b > P && (P = b), L > k && (k = L);
   }
-  const ae = Math.max(-0.08, Math.min(0.08, (P - k) * 0.02)), D = e.filter((m) => {
-    const b = n[m.playerId]?.level;
+  const ae = Math.max(-0.08, Math.min(0.08, (P - k) * 0.02)), D = e.filter((g) => {
+    const b = n[g.playerId]?.level;
     return b === "HIGH" || b === "CRITICAL";
-  }).length, N = t.filter((m) => {
-    const b = n[m.playerId]?.level;
+  }).length, N = t.filter((g) => {
+    const b = n[g.playerId]?.level;
     return b === "HIGH" || b === "CRITICAL";
   }).length, z = Math.max(-0.06, Math.min(0.06, (D - N) * 0.02)), ee = d + A + O + ae + z, te = Math.max(0.06, Math.min(0.94, ee)), $ = Math.round(te * 100), q = 100 - $;
   let Y = 13, l = 9;
-  const v = Math.abs($ - 50), Q = v <= 8;
-  v <= 8 ? (Y = $ >= 50 ? 13 : 11, l = $ >= 50 ? 11 : 13) : v <= 16 ? (Y = $ >= 50 ? 13 : 8, l = $ >= 50 ? 8 : 13) : v <= 26 ? (Y = $ >= 50 ? 13 : 5, l = $ >= 50 ? 5 : 13) : (Y = $ >= 50 ? 13 : 3, l = $ >= 50 ? 3 : 13);
+  const _ = Math.abs($ - 50), Q = _ <= 8;
+  _ <= 8 ? (Y = $ >= 50 ? 13 : 11, l = $ >= 50 ? 11 : 13) : _ <= 16 ? (Y = $ >= 50 ? 13 : 8, l = $ >= 50 ? 8 : 13) : _ <= 26 ? (Y = $ >= 50 ? 13 : 5, l = $ >= 50 ? 5 : 13) : (Y = $ >= 50 ? 13 : 3, l = $ >= 50 ? 3 : 13);
   const u = [];
-  Math.abs(g - _) >= 60 && u.push(
-    g > _ ? `Team 1 holds +${Math.round(g - _)} avg Elo edge` : `Team 2 holds +${Math.round(_ - g)} avg Elo edge`
+  Math.abs(y - v) >= 60 && u.push(
+    y > v ? `Team 1 holds +${Math.round(y - v)} avg Elo edge` : `Team 2 holds +${Math.round(v - y)} avg Elo edge`
   ), w && w.deltaWinRate >= 8 && u.push(
     w.leader === "faction1" ? `Team 1 dominates ${w.mapName} (+${w.deltaWinRate}% WR)` : `Team 2 dominates ${w.mapName} (+${w.deltaWinRate}% WR)`
   ), f > I && f >= 2 ? u.push(`Team 1 on hot momentum (${f} players On Fire)`) : I > f && I >= 2 && u.push(`Team 2 on hot momentum (${I} players On Fire)`), P >= 3 && P > k ? u.push(`Team 1 has ${P}-stack coordination`) : k >= 3 && k > P && u.push(`Team 2 has ${k}-stack coordination`), Math.abs(z) >= 0.04 && D + N > 0 && (D > N ? u.push(`Team 1 likely carries flagged accounts (${D} risk flagged)`) : N > D && u.push(`Team 2 likely carries flagged accounts (${N} risk flagged)`));
-  const h = u.length > 0 ? u.join(" • ") : "Evenly matched teams with balanced firepower & map proficiency", M = (m, b) => {
-    let L = m[0], H = -1;
-    for (const K of m) {
+  const h = u.length > 0 ? u.join(" • ") : "Evenly matched teams with balanced firepower & map proficiency", M = (g, b) => {
+    let L = g[0], H = -1;
+    for (const K of g) {
       const V = (b[K.playerId] || 20) * 1.5 + (K.last30Kd ?? K.overallKd ?? 1) * 10;
       V > H && (H = V, L = K);
     }
@@ -229,7 +229,7 @@ function Ee(s) {
       kd: L.last30Kd ?? L.overallKd ?? 1,
       elo: L.elo || 1e3
     } : void 0;
-  }, F = M(e, r), T = M(t, y);
+  }, F = M(e, r), T = M(t, p);
   return {
     winChanceF1: $,
     winChanceF2: q,
@@ -240,7 +240,7 @@ function Ee(s) {
     },
     keyAdvantageText: h,
     factors: {
-      eloDelta: Math.round(g - _),
+      eloDelta: Math.round(y - v),
       mapAdvantage: w,
       momentumAdvantage: {
         leader: G > j ? "faction1" : j > G ? "faction2" : "balanced",
@@ -278,19 +278,19 @@ const R = (s, ...e) => {
   return Number.isFinite(t) ? t : e;
 };
 function Ae(s, e, t, a, i, n) {
-  const r = t?.games?.cs2 || t?.games?.csgo || {}, y = r.faceit_elo || 1e3, o = r.skill_level || 1, c = r.game_player_id || t?.steam_id_64, g = t?.nickname || e || "Player", _ = t?.avatar || "", p = t?.country || "", d = Array.isArray(a) ? null : a, A = Array.isArray(i) ? null : i, w = d?.lifetime || A?.lifetime || {}, S = Object.keys(w).length > 0, f = ie(R(w, "Total Matches", "Matches", "m1"), 0), E = U(R(w, "Win Rate %", "k6"), 0) ?? 0, I = U(R(w, "Average K/D Ratio", "K/D Ratio", "k5"), 1) ?? 1, x = U(R(w, "Average Headshots %", "Headshots %", "k8"), 0) ?? 0, G = R(w, "ADR", "adr", "c3"), j = G ? U(G, void 0) : void 0, O = {}, se = [
+  const r = t?.games?.cs2 || t?.games?.csgo || {}, p = r.faceit_elo || 1e3, o = r.skill_level || 1, c = r.game_player_id || t?.steam_id_64, y = t?.nickname || e || "Player", v = t?.avatar || "", m = t?.country || "", d = Array.isArray(a) ? null : a, A = Array.isArray(i) ? null : i, w = d?.lifetime || A?.lifetime || {}, S = Object.keys(w).length > 0, f = ie(R(w, "Total Matches", "Matches", "m1"), 0), E = U(R(w, "Win Rate %", "k6"), 0) ?? 0, I = U(R(w, "Average K/D Ratio", "K/D Ratio", "k5"), 1) ?? 1, x = U(R(w, "Average Headshots %", "Headshots %", "k8"), 0) ?? 0, G = R(w, "ADR", "adr", "c3"), j = G ? U(G, void 0) : void 0, O = {}, se = [
     ...Array.isArray(a) ? a : a?.segments || a?.items || [],
     ...Array.isArray(i) ? i : i?.segments || i?.items || []
   ];
   for (const u of se) {
     const M = (u._id?.segmentId || u._id?.label || u.label || u.segmentId || u.name || "").replace(/^cs2_/, "").replace(/^csgo_/, "").replace(/^de_/, "").trim().toLowerCase();
     if (M) {
-      const F = ie(R(u.stats, "Matches") ?? R(u, "m1", "matches"), 0), T = U(R(u.stats, "Win Rate %") ?? R(u, "k6", "winRate"), 0) ?? 0, m = U(R(u.stats, "Average K/D Ratio", "K/D Ratio") ?? R(u, "k5", "kd"), 1) ?? 1, b = U(R(u.stats, "Average Headshots %") ?? R(u, "k8", "hsPercent"), 0) ?? 0, L = U(R(u.stats, "Average Kills") ?? R(u, "k1", "avgKills"), 0) ?? 0, H = R(u.stats, "ADR") ?? R(u, "c3", "adr"), K = H ? U(H, void 0) : void 0, X = ie(R(u.stats, "Wins") ?? R(u, "m2", "wins"), Math.round(F * T / 100));
+      const F = ie(R(u.stats, "Matches") ?? R(u, "m1", "matches"), 0), T = U(R(u.stats, "Win Rate %") ?? R(u, "k6", "winRate"), 0) ?? 0, g = U(R(u.stats, "Average K/D Ratio", "K/D Ratio") ?? R(u, "k5", "kd"), 1) ?? 1, b = U(R(u.stats, "Average Headshots %") ?? R(u, "k8", "hsPercent"), 0) ?? 0, L = U(R(u.stats, "Average Kills") ?? R(u, "k1", "avgKills"), 0) ?? 0, H = R(u.stats, "ADR") ?? R(u, "c3", "adr"), K = H ? U(H, void 0) : void 0, X = ie(R(u.stats, "Wins") ?? R(u, "m2", "wins"), Math.round(F * T / 100));
       (!O[M] || F > O[M].matches) && (O[M] = {
         mapName: M,
         matches: F,
         winRate: T,
-        kd: m,
+        kd: g,
         hsPercent: b,
         avgKills: L,
         avgAdr: K,
@@ -306,8 +306,8 @@ function Ae(s, e, t, a, i, n) {
     for (let u = 0; u < n.length; u++) {
       const h = n[u], M = h.i10 === "1" || h.result === "1" || h.stats?.Result === "1" || h.stats?.Win === "1", F = M ? "W" : "L";
       u === 0 ? (k = F, P = 1) : ae && (F === k ? P++ : ae = !1);
-      const T = (h.i1 || h.stats?.Map || h.map || "").replace(/^cs2_/, "").replace(/^de_/, "").toLowerCase(), m = ie(h.i6 ?? h.stats?.Kills ?? h.kills, 0), b = ie(h.i8 ?? h.stats?.Deaths ?? h.deaths, 0), L = h.c3 || h.stats?.ADR || h.adr, H = L ? U(L, void 0) : void 0, K = h.c4 || h.stats?.["Headshots %"], X = K ? U(K, void 0) : void 0;
-      T && (D[T] || (D[T] = { matches: 0, wins: 0, kills: 0, deaths: 0, adrSum: 0, adrCount: 0 }), D[T].matches++, M && D[T].wins++, D[T].kills += m, D[T].deaths += b, H !== void 0 && (D[T].adrSum += H, D[T].adrCount++));
+      const T = (h.i1 || h.stats?.Map || h.map || "").replace(/^cs2_/, "").replace(/^de_/, "").toLowerCase(), g = ie(h.i6 ?? h.stats?.Kills ?? h.kills, 0), b = ie(h.i8 ?? h.stats?.Deaths ?? h.deaths, 0), L = h.c3 || h.stats?.ADR || h.adr, H = L ? U(L, void 0) : void 0, K = h.c4 || h.stats?.["Headshots %"], X = K ? U(K, void 0) : void 0;
+      T && (D[T] || (D[T] = { matches: 0, wins: 0, kills: 0, deaths: 0, adrSum: 0, adrCount: 0 }), D[T].matches++, M && D[T].wins++, D[T].kills += g, D[T].deaths += b, H !== void 0 && (D[T].adrSum += H, D[T].adrCount++));
       const V = h.elo ? parseInt(h.elo.toString().replace(/,/g, ""), 10) : h.i15 ? parseInt(h.i15, 10) : void 0;
       let B;
       if (u < n.length - 1 && V) {
@@ -323,9 +323,9 @@ function Ae(s, e, t, a, i, n) {
         map: T,
         result: F,
         score: h.i18 || h.stats?.Score || "13:0",
-        kills: m,
+        kills: g,
         deaths: b,
-        kd: parseFloat(h.c2 || h.stats?.["K/D Ratio"] || (b > 0 ? (m / b).toFixed(2) : m.toFixed(2))),
+        kd: parseFloat(h.c2 || h.stats?.["K/D Ratio"] || (b > 0 ? (g / b).toFixed(2) : g.toFixed(2))),
         hsPercent: X,
         adr: H,
         elo: V,
@@ -334,12 +334,12 @@ function Ae(s, e, t, a, i, n) {
     }
   for (const [u, h] of Object.entries(D))
     if (!O[u] || O[u].matches === 0) {
-      const M = h.matches, F = h.wins, T = M > 0 ? Math.round(F / M * 100) : 50, m = h.deaths > 0 ? parseFloat((h.kills / h.deaths).toFixed(2)) : 1, b = h.adrCount > 0 ? Math.round(h.adrSum / h.adrCount) : void 0;
+      const M = h.matches, F = h.wins, T = M > 0 ? Math.round(F / M * 100) : 50, g = h.deaths > 0 ? parseFloat((h.kills / h.deaths).toFixed(2)) : 1, b = h.adrCount > 0 ? Math.round(h.adrSum / h.adrCount) : void 0;
       O[u] = {
         mapName: u,
         matches: M,
         winRate: T,
-        kd: m,
+        kd: g,
         hsPercent: x,
         avgKills: M > 0 ? parseFloat((h.kills / M).toFixed(1)) : 15,
         avgAdr: b,
@@ -350,23 +350,23 @@ function Ae(s, e, t, a, i, n) {
   const N = J.slice(0, 30), z = N.length;
   let ee, te, $ = 0, q, Y;
   if (z > 0) {
-    const u = N.reduce((m, b) => m + (b.kills || 0), 0), h = N.reduce((m, b) => m + (b.deaths || 0), 0);
+    const u = N.reduce((g, b) => g + (b.kills || 0), 0), h = N.reduce((g, b) => g + (b.deaths || 0), 0);
     ee = h > 0 ? parseFloat((u / h).toFixed(2)) : void 0;
-    const M = N.map((m) => m.adr).filter((m) => m !== void 0 && m > 0);
-    $ = M.length, te = M.length > 0 ? Math.round(M.reduce((m, b) => m + b, 0) / M.length) : void 0;
-    const F = N.map((m) => m.hsPercent).filter((m) => m !== void 0);
-    q = F.length > 0 ? Math.round(F.reduce((m, b) => m + b, 0) / F.length) : void 0;
-    const T = N.filter((m) => m.result === "W").length;
+    const M = N.map((g) => g.adr).filter((g) => g !== void 0 && g > 0);
+    $ = M.length, te = M.length > 0 ? Math.round(M.reduce((g, b) => g + b, 0) / M.length) : void 0;
+    const F = N.map((g) => g.hsPercent).filter((g) => g !== void 0);
+    q = F.length > 0 ? Math.round(F.reduce((g, b) => g + b, 0) / F.length) : void 0;
+    const T = N.filter((g) => g.result === "W").length;
     Y = Math.round(T / z * 100);
   }
-  const { formStatus: l, recentKd: v, recentAdr: Q } = Fe(J, I, j);
+  const { formStatus: l, recentKd: _, recentAdr: Q } = Fe(J, I, j);
   return {
     playerId: s,
-    nickname: g,
-    avatar: _,
-    country: p,
+    nickname: y,
+    avatar: v,
+    country: m,
     steamId64: c,
-    elo: Number.isFinite(y) ? y : 1e3,
+    elo: Number.isFinite(p) ? p : 1e3,
     skillLevel: Number.isFinite(o) ? o : 1,
     totalMatches: f,
     overallWinRate: E,
@@ -388,7 +388,7 @@ function Ae(s, e, t, a, i, n) {
     mapStats: O,
     registrationDate: t?.created_at,
     formStatus: l,
-    recentKd: v,
+    recentKd: _,
     recentAdr: Q
   };
 }
@@ -466,32 +466,32 @@ class Re {
         ne(`https://api.faceit.com/stats/v1/stats/users/${a}/games/cs2`),
         ne(`https://api.faceit.com/stats/v1/stats/time/users/${a}/games/cs2?size=30`)
       ]);
-      let y = null;
+      let p = null;
       if (i.status === "fulfilled" && i.value.ok) {
-        const p = await i.value.json();
-        y = p.payload || p;
+        const m = await i.value.json();
+        p = m.payload || m;
       }
       let o = null;
       if (n.status === "fulfilled" && n.value.ok) {
-        const p = await n.value.json();
-        o = p.payload || p;
+        const m = await n.value.json();
+        o = m.payload || m;
       }
       let c = [];
       if (r.status === "fulfilled" && r.value.ok) {
-        const p = await r.value.json(), d = p.payload || p;
+        const m = await r.value.json(), d = m.payload || m;
         c = Array.isArray(d) ? d : d?.items || d?.segments || [];
       }
-      let g = null;
+      let y = null;
       if (!(!!(o?.lifetime && Object.keys(o.lifetime).length > 0) || Array.isArray(o?.segments) && o.segments.length > 0 || c.length > 0))
         try {
-          const p = await ne(`https://api.faceit.com/stats/v1/stats/users/${a}/games/csgo`);
-          if (p.ok) {
-            const d = await p.json();
-            g = d.payload || d;
+          const m = await ne(`https://api.faceit.com/stats/v1/stats/users/${a}/games/csgo`);
+          if (m.ok) {
+            const d = await m.json();
+            y = d.payload || d;
           }
         } catch {
         }
-      return Ae(e, t, y, o, g, c);
+      return Ae(e, t, p, o, y, c);
     } catch (a) {
       return console.error(`[f-insight:FaceitApi] Error fetching player ${e}:`, a), null;
     }
@@ -513,7 +513,7 @@ function ke(s) {
   return Pe.includes(e) ? e : "VOTING";
 }
 function _e(s) {
-  const e = s.teams?.faction1 || s.faction1 || {}, t = s.teams?.faction2 || s.faction2 || {}, a = s.voting?.map?.pick || [], i = a.length > 0 ? a[a.length - 1] : [...s.voting?.map?.entities || []].reverse().find((o) => o.status === "pick")?.name, n = s.configured_server_ip || s.server_ip, r = n && /^[a-zA-Z0-9.\-]+:\d+$/.test(n) ? n : void 0, y = (o) => (o || []).map((c) => ({
+  const e = s.teams?.faction1 || s.faction1 || {}, t = s.teams?.faction2 || s.faction2 || {}, a = s.voting?.map?.pick || [], i = a.length > 0 ? a[a.length - 1] : [...s.voting?.map?.entities || []].reverse().find((o) => o.status === "pick")?.name, n = s.configured_server_ip || s.server_ip, r = n && /^[a-zA-Z0-9.\-]+:\d+$/.test(n) ? n : void 0, p = (o) => (o || []).map((c) => ({
     player_id: c.id || c.player_id,
     nickname: c.nickname || "Player",
     avatar: c.avatar || "",
@@ -538,14 +538,14 @@ function _e(s) {
         name: e.name || "Team 1",
         avatar: e.avatar,
         leader: e.leader,
-        roster: y(e.roster)
+        roster: p(e.roster)
       },
       faction2: {
         faction_id: t.id || t.faction_id || "faction2",
         name: t.name || "Team 2",
         avatar: t.avatar,
         leader: t.leader,
-        roster: y(t.roster)
+        roster: p(t.roster)
       }
     },
     voting: s.voting,
@@ -562,7 +562,7 @@ function De(s, e) {
     avatar: i ? i[1] : "",
     communityVisibilityState: t ? 1 : 3
   };
-  let r = 0, y = 0;
+  let r = 0, p = 0;
   const o = s.match(/<mostPlayedGames>([\s\S]*?)<\/mostPlayedGames>/);
   if (o) {
     const d = o[1].split("</mostPlayedGame>");
@@ -571,7 +571,7 @@ function De(s, e) {
         const w = A.match(/<hoursOnRecord>(.*?)<\/hoursOnRecord>/);
         w && (r = parseFloat(w[1].replace(/,/g, "")));
         const S = A.match(/<hoursPlayed>(.*?)<\/hoursPlayed>/);
-        S && (y = parseFloat(S[1].replace(/,/g, "")), r === 0 && (r = y));
+        S && (p = parseFloat(S[1].replace(/,/g, "")), r === 0 && (r = p));
         break;
       }
   }
@@ -580,10 +580,10 @@ function De(s, e) {
     const d = new Date(c[1]);
     isNaN(d.getTime()) || (n.timeCreated = d.getTime() / 1e3, n.accountAgeYears = (Date.now() - d.getTime()) / (1e3 * 60 * 60 * 24 * 365.25));
   }
-  const g = s.match(/<communityBanned>(.*?)<\/communityBanned>/), _ = s.match(/<vacBanned>(.*?)<\/vacBanned>/), p = {
+  const y = s.match(/<communityBanned>(.*?)<\/communityBanned>/), v = s.match(/<vacBanned>(.*?)<\/vacBanned>/), m = {
     steamId64: e,
-    communityBanned: g ? g[1] === "1" : !1,
-    vacBanned: _ ? _[1] === "1" : !1,
+    communityBanned: y ? y[1] === "1" : !1,
+    vacBanned: v ? v[1] === "1" : !1,
     numberOfVACBans: parseInt(s.match(/<numberOfVACBans>(.*?)<\/numberOfVACBans>/)?.[1] || "0", 10),
     daysSinceLastBan: parseInt(s.match(/<daysSinceLastBan>(.*?)<\/daysSinceLastBan>/)?.[1] || "0", 10),
     numberOfGameBans: parseInt(s.match(/<numberOfGameBans>(.*?)<\/numberOfGameBans>/)?.[1] || "0", 10),
@@ -593,9 +593,9 @@ function De(s, e) {
     summary: n,
     playtime: {
       cs2HoursTotal: r,
-      cs2HoursLast2Weeks: y
+      cs2HoursLast2Weeks: p
     },
-    bans: p,
+    bans: m,
     isPrivate: t,
     fetchedAt: Date.now()
   };
@@ -636,8 +636,8 @@ const Ne = new Le();
 function He(s, e) {
   const t = [];
   let a = 0;
-  const i = s.totalMatches || 0, n = s.elo || 1e3, r = s.overallKd || 1, y = s.overallWinRate || 50, o = s.recentKd || r, c = s.recentAdr || 75, g = s.statsAvailable !== !1;
-  g && (n >= 2200 && i < 100 ? (a += 45, t.push({
+  const i = s.totalMatches || 0, n = s.elo || 1e3, r = s.overallKd || 1, p = s.overallWinRate || 50, o = s.recentKd || r, c = s.recentAdr || 75, y = s.statsAvailable !== !1;
+  y && (n >= 2200 && i < 100 ? (a += 45, t.push({
     id: "lvl10_extreme_low_matches",
     title: "High Elo on Very Fresh Account",
     description: `${n} Elo achieved in only ${i} matches`,
@@ -672,7 +672,7 @@ function He(s, e) {
     weight: 10,
     severity: "info",
     category: "MATCHES_ELO"
-  })) : i >= 800 && (a -= 15)), g && r >= 2 ? (a += 30, t.push({
+  })) : i >= 800 && (a -= 15)), y && r >= 2 ? (a += 30, t.push({
     id: "extreme_kd",
     title: "Exceptional K/D Ratio (2.0+)",
     description: `Lifetime K/D of ${r.toFixed(2)} is drastically above normal distribution`,
@@ -693,7 +693,7 @@ function He(s, e) {
     weight: 12,
     severity: "warning",
     category: "KD_ANOMALY"
-  })) : r < 0.95 && i >= 50 && (a -= 10), g && s.overallAdr !== void 0 && s.overallAdr >= 95 && i < 300 && (a += 22, t.push({
+  })) : r < 0.95 && i >= 50 && (a -= 10), y && s.overallAdr !== void 0 && s.overallAdr >= 95 && i < 300 && (a += 22, t.push({
     id: "extreme_adr",
     title: "Exceptional Average Damage (95+)",
     description: `Lifetime ADR of ${s.overallAdr.toFixed(0)} is far above the typical range`,
@@ -728,24 +728,24 @@ function He(s, e) {
     weight: 8,
     severity: "info",
     category: "HS_ANOMALY"
-  })), g && y >= 80 && i >= 10 ? (a += 30, t.push({
+  })), y && p >= 80 && i >= 10 ? (a += 30, t.push({
     id: "extreme_winrate",
     title: "Extreme Win Rate (80%+)",
-    description: `Lifetime win rate of ${y.toFixed(0)}% across ${i} matches`,
+    description: `Lifetime win rate of ${p.toFixed(0)}% across ${i} matches`,
     weight: 30,
     severity: "danger",
     category: "WINRATE_ANOMALY"
-  })) : y >= 70 && i >= 15 ? (a += 20, t.push({
+  })) : p >= 70 && i >= 15 ? (a += 20, t.push({
     id: "high_winrate",
     title: "Very High Win Rate (70%+)",
-    description: `Lifetime win rate of ${y.toFixed(0)}%`,
+    description: `Lifetime win rate of ${p.toFixed(0)}%`,
     weight: 20,
     severity: "warning",
     category: "WINRATE_ANOMALY"
-  })) : y >= 62 && i >= 25 && (a += 10, t.push({
+  })) : p >= 62 && i >= 25 && (a += 10, t.push({
     id: "elevated_winrate",
     title: "Elevated Win Rate",
-    description: `Lifetime win rate of ${y.toFixed(0)}%`,
+    description: `Lifetime win rate of ${p.toFixed(0)}%`,
     weight: 10,
     severity: "info",
     category: "WINRATE_ANOMALY"
@@ -778,11 +778,11 @@ function He(s, e) {
     severity: "warning",
     category: "KD_ANOMALY"
   }));
-  let _ = !0;
+  let v = !0;
   if (!e || e.fetchError)
-    _ = !1;
+    v = !1;
   else if (e.isPrivate) {
-    _ = !0, t.push({
+    v = !0, t.push({
       id: "private_steam",
       title: "Hidden Account (Private Steam)",
       description: "Steam hours and profile details are hidden by user privacy settings",
@@ -798,7 +798,7 @@ function He(s, e) {
       weight: f,
       severity: f >= 22 ? "danger" : "warning",
       category: "PRIVATE_PROFILE"
-    })), g && i < 100 && (a += 10, t.push({
+    })), y && i < 100 && (a += 10, t.push({
       id: "private_steam_fresh_account",
       title: "Hidden Account on Fresh FACEIT Account",
       description: `Private Steam profile with only ${i} matches on record`,
@@ -815,7 +815,7 @@ function He(s, e) {
       severity: "warning",
       category: "PRIVATE_PROFILE"
     }));
-  } else if (_ = !1, e.summary) {
+  } else if (v = !1, e.summary) {
     const f = e.playtime?.cs2HoursTotal !== void 0, E = f ? e.playtime.cs2HoursTotal ?? 0 : 0, I = f && E === 0;
     E > 0 && E < 150 && n >= 1600 || I && n >= 1600 ? (a += 30, t.push({
       id: "low_steam_hours",
@@ -853,9 +853,9 @@ function He(s, e) {
       category: "BAN_HISTORY"
     });
   }
-  const p = s.registrationDate ? new Date(s.registrationDate) : null;
-  if (p && !isNaN(p.getTime())) {
-    const f = (Date.now() - p.getTime()) / 315576e5;
+  const m = s.registrationDate ? new Date(s.registrationDate) : null;
+  if (m && !isNaN(m.getTime())) {
+    const f = (Date.now() - m.getTime()) / 315576e5;
     f < 0.5 && n >= 1350 ? (a += 22, t.push({
       id: "fresh_faceit_high_elo",
       title: "Fresh FACEIT Account (<6 Months)",
@@ -878,7 +878,7 @@ function He(s, e) {
     score: d,
     level: A,
     flags: t,
-    isPrivateSteam: _,
+    isPrivateSteam: v,
     summary: `${d}% Smurf Risk (${A})`,
     color: w,
     badgeText: S
@@ -908,7 +908,7 @@ function Oe(s, e) {
         const A = r.get(d.party_id) || [];
         A.push(d.player_id), r.set(d.party_id, A);
       }
-    const y = /* @__PURE__ */ new Set();
+    const p = /* @__PURE__ */ new Set();
     for (const [, d] of r.entries())
       if (d.length >= 2) {
         const A = String.fromCharCode(65 + a % 26);
@@ -917,15 +917,15 @@ function Oe(s, e) {
           tag: `Party ${A} (${d.length})`,
           color: ce[a % ce.length],
           playerIds: d
-        }), a++, d.forEach((w) => y.add(w));
+        }), a++, d.forEach((w) => p.add(w));
       }
-    const o = n.roster.map((d) => d.player_id).filter((d) => !y.has(d)), c = 15, g = /* @__PURE__ */ new Map();
+    const o = n.roster.map((d) => d.player_id).filter((d) => !p.has(d)), c = 15, y = /* @__PURE__ */ new Map();
     for (const d of o) {
       const A = e[d];
-      A?.recentMatches && g.set(d, new Set(A.recentMatches.slice(0, c).map((w) => w.matchId)));
+      A?.recentMatches && y.set(d, new Set(A.recentMatches.slice(0, c).map((w) => w.matchId)));
     }
-    const _ = /* @__PURE__ */ new Set(), p = (d, A) => {
-      const w = g.get(d), S = g.get(A);
+    const v = /* @__PURE__ */ new Set(), m = (d, A) => {
+      const w = y.get(d), S = y.get(A);
       if (!w || !S) return !1;
       let f = 0;
       for (const E of w)
@@ -933,16 +933,16 @@ function Oe(s, e) {
       return !1;
     };
     for (const d of o) {
-      if (_.has(d)) continue;
+      if (v.has(d)) continue;
       const A = [], w = [d];
-      for (_.add(d); w.length > 0; ) {
+      for (v.add(d); w.length > 0; ) {
         const S = w.shift();
         A.push(S);
         for (const f of o)
-          !_.has(f) && p(S, f) && (_.add(f), w.push(f));
+          !v.has(f) && m(S, f) && (v.add(f), w.push(f));
       }
       if (A.length >= 2) {
-        A.forEach((f) => y.add(f));
+        A.forEach((f) => p.add(f));
         const S = String.fromCharCode(65 + a % 26);
         t.push({
           id: `party-${a}`,
@@ -998,8 +998,8 @@ async function Ye(s, e, t, a = 150) {
       const o = n++;
       i[o] = await t(s[o], o), a > 0 && await Ge(a);
     }
-  }, y = Array.from({ length: Math.min(e, s.length) }, r);
-  return await Promise.all(y), i;
+  }, p = Array.from({ length: Math.min(e, s.length) }, r);
+  return await Promise.all(p), i;
 }
 class Ve {
   settings = { ...oe };
@@ -1077,34 +1077,37 @@ class Ve {
       return { success: !1, error: "Unrecognized intercepted URL" };
     if (!e?.body || typeof e.body != "object")
       return { success: !1, error: "Invalid intercepted profile body" };
-    const { kind: i, playerId: n } = a, r = e.body.payload ?? e.body, y = `intercept_profile:${n}`, o = await C.get(y) || {};
-    let c = !1;
-    if (i === "user" && r && typeof r == "object" && !Array.isArray(r))
+    const { kind: i, playerId: n } = a, r = e.body.payload ?? e.body, p = `intercept_profile:${n}`, o = await C.get(p) || {};
+    let c = !1, y;
+    if (i === "user" && r && typeof r == "object" && !Array.isArray(r)) {
       o.user = r, c = !0;
-    else if (i === "stats" && r && typeof r == "object" && !Array.isArray(r))
+      const m = r.nickname;
+      typeof m == "string" && m.trim() && (y = { guid: n, nickname: m.trim() });
+    } else if (i === "stats" && r && typeof r == "object" && !Array.isArray(r))
       o.stats = r, c = !0;
     else if (i === "time") {
-      const _ = Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : null;
-      _ && _.length > 0 && (o.time = _, c = !0);
+      const m = Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : null;
+      m && m.length > 0 && (o.time = m, c = !0);
     }
     if (!c)
       return { success: !1, error: `Intercepted ${i} payload had no usable shape` };
-    await C.set(y, o, Z.NEGATIVE * 3);
-    const g = Ie(n, o);
-    return g ? (await C.set(
+    await C.set(p, o, Z.NEGATIVE * 3);
+    const v = Ie(n, o);
+    return v ? (await C.set(
       `player_stats:${n}`,
-      g,
-      g.statsAvailable === !1 ? Z.NEGATIVE : Z.PLAYER_STATS
+      v,
+      v.statsAvailable === !1 ? Z.NEGATIVE : Z.PLAYER_STATS
     ), console.warn(
-      `[f-insight:Background] Hydrated player ${n} from intercepted ${i} payload (statsAvailable=${g.statsAvailable !== !1})`
+      `[f-insight:Background] Hydrated player ${n} from intercepted ${i} payload (statsAvailable=${v.statsAvailable !== !1})`
     ), {
       success: !0,
       data: {
         kind: "profile-hydrated",
         playerId: n,
-        statsAvailable: g.statsAvailable !== !1
+        statsAvailable: v.statsAvailable !== !1,
+        selfCandidate: y
       }
-    }) : { success: !0, data: { kind: "profile-staged", playerId: n } };
+    }) : { success: !0, data: { kind: "profile-staged", playerId: n, selfCandidate: y } };
   }
   async handleSaveSettings(e) {
     const t = {};
@@ -1118,18 +1121,18 @@ class Ve {
   async handleFetchLobbyInsight(e, t) {
     const { matchId: a, forceRefresh: i } = e, n = `match_analysis:${a}`;
     if (!i) {
-      const y = await C.get(n);
-      if (y && !y.isPartial)
-        return { success: !0, data: y };
+      const p = await C.get(n);
+      if (p && !p.isPartial)
+        return { success: !0, data: p };
     }
     const r = await pe.getMatchDetails(a);
     if (!r)
       return { success: !1, error: `Could not fetch match details for ${a}` };
     if (t?.tab?.id && (this.streamSubscribers.has(a) || this.streamSubscribers.set(a, /* @__PURE__ */ new Set()), this.streamSubscribers.get(a).add(t.tab.id)), !this.inFlightStreams.has(a) || i) {
-      const y = this.streamLobbyData(a, r, i).finally(() => {
-        this.inFlightStreams.get(a) === y && this.inFlightStreams.delete(a), this.streamSubscribers.delete(a);
+      const p = this.streamLobbyData(a, r, i).finally(() => {
+        this.inFlightStreams.get(a) === p && this.inFlightStreams.delete(a), this.streamSubscribers.delete(a);
       });
-      this.inFlightStreams.set(a, y);
+      this.inFlightStreams.set(a, p);
     }
     return { success: !0, data: { match: r, isPartial: !0 } };
   }
@@ -1150,43 +1153,43 @@ class Ve {
         this.safeSendToTab(i, t);
   }
   async streamLobbyDataInner(e, t, a) {
-    const i = `match_analysis:${e}`, n = t.teams?.faction1?.roster || [], r = t.teams?.faction2?.roster || [], y = [...n, ...r], o = {}, c = {}, g = {};
+    const i = `match_analysis:${e}`, n = t.teams?.faction1?.roster || [], r = t.teams?.faction2?.roster || [], p = [...n, ...r], o = {}, c = {}, y = {};
     await Ye(
-      y,
+      p,
       2,
       async (l) => {
-        const v = l.player_id;
-        if (!v) return;
-        const Q = `player_stats:${v}`;
+        const _ = l.player_id;
+        if (!_) return;
+        const Q = `player_stats:${_}`;
         let u = null;
         if (a || (u = await C.get(Q)), !u) {
-          const h = await pe.getPlayerStats(v, l.nickname);
+          const h = await pe.getPlayerStats(_, l.nickname);
           if (h && h.statsAvailable === !1) {
             const M = await C.get(Q);
             M && M.statsAvailable !== !1 ? u = M : (await C.set(Q, h, Z.NEGATIVE), u = h);
           } else h && (await C.set(Q, h, Z.PLAYER_STATS), u = h);
         }
         if (u) {
-          o[v] = u;
+          o[_] = u;
           const h = u.steamId64 || l.game_player_id;
           if (h) {
             const M = `steam_data:${h}`;
             let F = null;
-            a || (F = await C.get(M)), F || (F = await Ne.getPlayerFullData(h), F && !F.fetchError && await C.set(M, F, Z.STEAM_PROFILE)), F && (c[v] = F);
+            a || (F = await C.get(M)), F || (F = await Ne.getPlayerFullData(h), F && !F.fetchError && await C.set(M, F, Z.STEAM_PROFILE)), F && (c[_] = F);
           }
-          g[v] = He(u, c[v]), this.broadcastToSubscribers(e, {
+          y[_] = He(u, c[_]), this.broadcastToSubscribers(e, {
             type: "PLAYER_STATS_UPDATE",
-            payload: { matchId: e, playerId: v, stats: u, steam: c[v], risk: g[v] }
+            payload: { matchId: e, playerId: _, stats: u, steam: c[_], risk: y[_] }
           });
         }
       },
       400
     );
-    const _ = n.map((l) => o[l.player_id]?.elo || l.elo || 1e3), p = r.map((l) => o[l.player_id]?.elo || l.elo || 1e3), d = _.reduce((l, v) => l + v, 0), A = p.reduce((l, v) => l + v, 0), w = _.length > 0 ? Math.round(d / _.length) : 1e3, S = p.length > 0 ? Math.round(A / p.length) : 1e3, f = w - S, E = n.map((l) => o[l.player_id]?.last30Kd ?? o[l.player_id]?.overallKd ?? 1), I = r.map((l) => o[l.player_id]?.last30Kd ?? o[l.player_id]?.overallKd ?? 1), x = E.length > 0 ? parseFloat((E.reduce((l, v) => l + v, 0) / E.length).toFixed(2)) : 1, G = I.length > 0 ? parseFloat((I.reduce((l, v) => l + v, 0) / I.length).toFixed(2)) : 1, j = n.map((l) => o[l.player_id]?.overallHsPercent || 0), O = r.map((l) => o[l.player_id]?.overallHsPercent || 0), se = j.length > 0 ? Math.round(j.reduce((l, v) => l + v, 0) / j.length) : 0, J = O.length > 0 ? Math.round(O.reduce((l, v) => l + v, 0) / O.length) : 0, P = n.map((l) => o[l.player_id]?.last30Adr ?? o[l.player_id]?.overallAdr ?? 75), k = r.map((l) => o[l.player_id]?.last30Adr ?? o[l.player_id]?.overallAdr ?? 75), ae = P.length > 0 ? Math.round(P.reduce((l, v) => l + v, 0) / P.length) : 75, D = k.length > 0 ? Math.round(k.reduce((l, v) => l + v, 0) / k.length) : 75, N = n.map((l) => o[l.player_id]).filter(Boolean), z = r.map((l) => o[l.player_id]).filter(Boolean), ee = me(N), te = me(z);
-    for (const [l, v] of Object.entries(ee))
-      o[l] && (o[l].fcrContributionPercent = v);
-    for (const [l, v] of Object.entries(te))
-      o[l] && (o[l].fcrContributionPercent = v);
+    const v = n.map((l) => o[l.player_id]?.elo || l.elo || 1e3), m = r.map((l) => o[l.player_id]?.elo || l.elo || 1e3), d = v.reduce((l, _) => l + _, 0), A = m.reduce((l, _) => l + _, 0), w = v.length > 0 ? Math.round(d / v.length) : 1e3, S = m.length > 0 ? Math.round(A / m.length) : 1e3, f = w - S, E = n.map((l) => o[l.player_id]?.last30Kd ?? o[l.player_id]?.overallKd ?? 1), I = r.map((l) => o[l.player_id]?.last30Kd ?? o[l.player_id]?.overallKd ?? 1), x = E.length > 0 ? parseFloat((E.reduce((l, _) => l + _, 0) / E.length).toFixed(2)) : 1, G = I.length > 0 ? parseFloat((I.reduce((l, _) => l + _, 0) / I.length).toFixed(2)) : 1, j = n.map((l) => o[l.player_id]?.overallHsPercent || 0), O = r.map((l) => o[l.player_id]?.overallHsPercent || 0), se = j.length > 0 ? Math.round(j.reduce((l, _) => l + _, 0) / j.length) : 0, J = O.length > 0 ? Math.round(O.reduce((l, _) => l + _, 0) / O.length) : 0, P = n.map((l) => o[l.player_id]?.last30Adr ?? o[l.player_id]?.overallAdr ?? 75), k = r.map((l) => o[l.player_id]?.last30Adr ?? o[l.player_id]?.overallAdr ?? 75), ae = P.length > 0 ? Math.round(P.reduce((l, _) => l + _, 0) / P.length) : 75, D = k.length > 0 ? Math.round(k.reduce((l, _) => l + _, 0) / k.length) : 75, N = n.map((l) => o[l.player_id]).filter(Boolean), z = r.map((l) => o[l.player_id]).filter(Boolean), ee = me(N), te = me(z);
+    for (const [l, _] of Object.entries(ee))
+      o[l] && (o[l].fcrContributionPercent = _);
+    for (const [l, _] of Object.entries(te))
+      o[l] && (o[l].fcrContributionPercent = _);
     const $ = Oe(t, o), q = Ee({
       f1AvgElo: w,
       f2AvgElo: S,
@@ -1194,14 +1197,14 @@ class Ve {
       f2Players: z,
       selectedMap: t.selected_map,
       premadeGroups: $,
-      riskAnalysis: g,
+      riskAnalysis: y,
       f1Fcr: ee,
       f2Fcr: te
     }), Y = {
       match: t,
       playersStats: o,
       steamData: c,
-      riskAnalysis: g,
+      riskAnalysis: y,
       premadeGroups: $,
       teamSummary: {
         faction1: {

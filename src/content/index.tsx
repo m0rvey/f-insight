@@ -25,6 +25,9 @@ class ContentEngine {
   private currentMatchId: string | null = null;
   private lobbyPayload: LobbyAnalysisPayload | null = null;
   private currentUser: DetectedCurrentUser | null = null;
+  // Identities seen in intercepted user payloads (guid -> nickname), newest
+  // kept up to 10. Intersected against the match roster for team detection.
+  private observedIdentities = new Map<string, string | undefined>();
   private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private isDormant = false;
   private warnedZeroTargets = false;
@@ -447,6 +450,21 @@ class ContentEngine {
           payload: { body: p.body, url: p.url },
         })
         .then((res: any) => {
+          // Identity signal: user payloads carry the logged-in player. Store
+          // and retry team detection if the roster is known but the user is
+          // still unidentified.
+          const candidate = res?.data?.selfCandidate;
+          if (candidate?.guid && typeof candidate.guid === 'string') {
+            this.rememberObservedIdentity(candidate.guid, candidate.nickname);
+            if (!this.currentUser?.isDetected && this.lobbyPayload) {
+              const detected = this.detectCurrentUserFromRosters();
+              if (detected.isDetected) {
+                this.currentUser = detected;
+                this.vetoRanking = this.buildVetoRanking() || [];
+                this.renderAll(true);
+              }
+            }
+          }
           // Hydrated cache entries are read by the next lobby fetch.
           if (
             res?.success &&
@@ -556,10 +574,7 @@ class ContentEngine {
 
     if (payloadChanged) {
       if (!this.currentUser && this.lobbyPayload?.match) {
-        this.currentUser = detectCurrentPlayer(
-          this.lobbyPayload.match.teams?.faction1?.roster || [],
-          this.lobbyPayload.match.teams?.faction2?.roster || []
-        );
+        this.currentUser = this.detectCurrentUserFromRosters();
       }
 
       // Compute the map veto ranking once per payload state and share it with all consumers
@@ -638,6 +653,31 @@ class ContentEngine {
     const teams = this.lobbyPayload?.match?.teams;
     if (!teams) return [];
     return [...(teams.faction1?.roster || []), ...(teams.faction2?.roster || [])];
+  }
+
+  /** Store an identity seen in intercepted traffic; bounded to 10 newest. */
+  private rememberObservedIdentity(guid: string, nickname?: string): void {
+    this.observedIdentities.delete(guid);
+    this.observedIdentities.set(guid, nickname);
+    while (this.observedIdentities.size > 10) {
+      const oldest = this.observedIdentities.keys().next().value;
+      if (oldest === undefined) break;
+      this.observedIdentities.delete(oldest);
+    }
+  }
+
+  /** Team detection combining storage/DOM signals with observed identities. */
+  private detectCurrentUserFromRosters(): DetectedCurrentUser {
+    const match = this.lobbyPayload?.match;
+    const observed = Array.from(this.observedIdentities.entries()).map(([id, nickname]) => ({
+      id,
+      nickname,
+    }));
+    return detectCurrentPlayer(
+      match?.teams?.faction1?.roster || [],
+      match?.teams?.faction2?.roster || [],
+      observed
+    );
   }
 
   private renderPlayerBadges(allowTextFallback: boolean = true) {
