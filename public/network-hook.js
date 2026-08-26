@@ -101,7 +101,16 @@
             const ct =
               this.getResponseHeader && this.getResponseHeader('content-type');
             if (!ct || !String(ct).includes('json')) return;
-            dispatch(url, this.status, JSON.parse(this.responseText));
+            // responseType='json' makes responseText access THROW
+            // (InvalidAccessError) — read this.response instead. FACEIT's SPA
+            // uses json-typed XHRs for some profile endpoints.
+            let body;
+            if (this.responseType === 'json') {
+              body = this.response;
+            } else {
+              body = JSON.parse(this.responseText);
+            }
+            if (body && typeof body === 'object') dispatch(url, this.status, body);
           } catch (_) {}
         });
       }
